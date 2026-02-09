@@ -576,7 +576,7 @@ export default function ReportForm() {
               <div className="shrink-0 border-t border-gray-100 p-6 pt-4">
                 <button
                   type="button"
-                  onClick={handleGenerateOutline}
+                  onClick={() => handleGenerateOutline()}
                   disabled={!topic.trim() || loading}
                   className="w-full rounded-lg bg-[#2563eb] py-3 text-sm font-medium text-white hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
                 >
