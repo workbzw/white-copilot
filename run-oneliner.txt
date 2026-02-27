@@ -1,0 +1,3 @@
+# 无法复制粘贴时，在 Ubuntu 终端里手敲下面这一整行（把三处占位换成你的真实值后一次敲完）
+
+docker pull ccr.ccs.tencentyun.com/workbzw/white-copilot:0227 && docker stop white-copilot 2>/dev/null; docker rm white-copilot 2>/dev/null; docker run -d -p 3000:3000 -e LLM_BASE_URL=你的API地址/v1 -e LLM_MODEL=你的模型名 -e LLM_API_KEY=你的密钥 -v $(pwd)/data:/app/data --name white-copilot ccr.ccs.tencentyun.com/workbzw/white-copilot:0227
