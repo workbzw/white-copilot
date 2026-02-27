@@ -1,0 +1,28 @@
+# 依赖在镜像内重新安装
+node_modules
+.pnp
+.pnp.*
+
+# 构建产物在镜像内重新生成
+.next
+out
+build
+
+# 本地数据不打进镜像，运行时挂载卷
+data
+
+# 版本控制与开发文件
+.git
+.gitignore
+.dockerignore
+Dockerfile
+*.md
+.env*
+!.env.example
+
+# 开发/调试
+coverage
+.vscode
+.idea
+*.log
+.DS_Store

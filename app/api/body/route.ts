@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
     const reportTemplate = (body.reportTemplate as string)?.trim() || "公告模板";
     const coreContent = (body.coreContent as string)?.trim() || "";
     const styleMode = body.styleMode === "standard" ? "standard" : "ai";
+    const referenceText = (body.referenceText as string)?.trim() || "";
 
     if (!outline?.length || !topic) {
       return new Response(
@@ -53,12 +54,14 @@ ${styleHint}
 1. 按给定大纲逐节撰写，每节标题使用与大纲一致的格式（如一、二、三或对应标题）。
 2. 总字数约 ${wordCount} 字，合理分配到各节。
 3. 只输出报告正文，不要输出“好的”“以下是”等前缀。
-4. 使用中文，内容专业、数据与逻辑可信。`;
+4. 使用中文，内容专业、数据与逻辑可信。
+5. 若用户提供了重点引用资料，正文中必须引用其中的关键数据、表述或观点，应明确体现资料内容，不得完全脱离资料发挥。`;
 
     const userContent = [
       `报告主题：${topic}`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
+      referenceText ? `【重点引用资料（正文须体现以下内容，请务必引用）】\n\n${referenceText}` : "",
       `大纲：\n${outlineText}`,
     ]
       .filter(Boolean)

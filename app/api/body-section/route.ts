@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     const reportTemplate = (body.reportTemplate as string)?.trim() || "公告模板";
     const coreContent = (body.coreContent as string)?.trim() || "";
     const styleMode = body.styleMode === "standard" ? "standard" : "ai";
+    const referenceText = (body.referenceText as string)?.trim() || "";
 
     if (!outline?.length || !topic || !Number.isInteger(sectionIndex) || sectionIndex < 0) {
       return new Response(
@@ -63,13 +64,15 @@ ${styleHint}
 1. 本节标题为：${sectionTitle}。不要在正文中重复该标题，只写标题下方的正文。
 2. 本节字数约 ${wordCountPerSection} 字。
 3. 只输出本节正文，不要输出“好的”“以下是”等前缀，不要写其他节。
-4. 使用中文，内容专业、数据与逻辑可信。`;
+4. 使用中文，内容专业、数据与逻辑可信。
+5. 若用户提供了重点引用资料，本节正文中必须引用其中的关键数据、表述或观点，应明确体现资料内容，不得完全脱离资料发挥。`;
 
     const outlineContext = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const userContent = [
       `报告主题：${topic}`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
+      referenceText ? `【重点引用资料（本节须体现以下内容，请务必引用）】\n\n${referenceText}` : "",
       `全文大纲（供参考）：\n${outlineContext}`,
       `请只撰写第 ${sectionIndex + 1} 节「${sectionTitle}」的正文。`,
     ]

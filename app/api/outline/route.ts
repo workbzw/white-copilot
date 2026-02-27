@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateReportOutline } from "@/lib/siliconflow";
+import { extractReferenceText } from "@/lib/file-extract";
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,7 +8,7 @@ export async function POST(request: NextRequest) {
     const topic = (formData.get("topic") as string)?.trim() || "";
     const coreContent = (formData.get("coreContent") as string)?.trim() || "";
     const styleMode = (formData.get("styleMode") as string) || "ai";
-    const files = formData.getAll("files") as File[];
+    const files = (formData.getAll("files") as File[]).filter(Boolean);
 
     if (!topic) {
       return NextResponse.json(
@@ -16,23 +17,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("[outline] 请求参数:", { topic, coreContent, styleMode, filesCount: files.length });
+    const { referenceText, errors: extractErrors } = await extractReferenceText(files);
+    if (extractErrors.length) {
+      console.log("[outline] 引用资料提取提示:", extractErrors);
+    }
+    console.log("[outline] 请求参数:", { topic, coreContent, styleMode, filesCount: files.length, referenceLen: referenceText.length });
 
     const outline = await generateReportOutline({
       topic,
       coreContent: coreContent || undefined,
       styleMode: styleMode === "standard" ? "standard" : "ai",
+      referenceText: referenceText || undefined,
     });
 
     console.log("[outline] 生成结果:", outline);
-    return NextResponse.json({ outline });
+    return NextResponse.json({ outline, referenceText: referenceText || "" });
   } catch (e) {
     const message = e instanceof Error ? e.message : "生成大纲失败，请稍后重试";
-    const isConfigError = message.includes("SILICONFLOW_API_KEY");
+    const isConfigError = message.includes("API Key") || message.includes("LLM_API_KEY");
 
     if (isConfigError) {
       return NextResponse.json(
-        { error: "未配置硅基流动 API Key，请在 .env 中设置 SILICONFLOW_API_KEY" },
+        { error: "未配置大模型 API Key，请在 .env 中设置 LLM_API_KEY（或 SILICONFLOW_API_KEY）" },
         { status: 503 }
       );
     }

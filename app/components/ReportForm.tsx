@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { marked } from "marked";
-import TurndownService from "turndown";
-import { convertMarkdownToDocx } from "@mohtasham/md-to-docx";
 
 const STEPS = [
   { id: "outline", label: "生成大纲" },
@@ -14,7 +14,23 @@ const STEPS = [
 
 type StyleMode = "ai" | "standard";
 
-export default function ReportForm() {
+export type ReportFormInitialData = {
+  topic: string;
+  outline: string[];
+  body: string;
+  title?: string;
+  /** 重点引用资料全文，生成正文时会传给模型以优先引用 */
+  referenceText?: string;
+};
+
+type ReportFormProps = {
+  userId?: string;
+  docId?: string;
+  initialData?: ReportFormInitialData;
+};
+
+export default function ReportForm({ userId, docId, initialData }: ReportFormProps) {
+  const router = useRouter();
   const [step, setStep] = useState<"outline" | "body" | "optimize">("outline");
   const [topic, setTopic] = useState("");
   const [coreContent, setCoreContent] = useState("");
@@ -26,6 +42,7 @@ export default function ReportForm() {
   const [wordCount, setWordCount] = useState("100");
   const [reportTemplate, setReportTemplate] = useState("公告模板");
   const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("full");
+  const [referenceText, setReferenceText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [bodyContent, setBodyContent] = useState("");
@@ -39,20 +56,44 @@ export default function ReportForm() {
   const [bodyCompleted, setBodyCompleted] = useState(false);
   const [aiToolLoading, setAiToolLoading] = useState<"polish" | "simplify" | "expand" | null>(null);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [saveMdLoading, setSaveMdLoading] = useState(false);
+  const [saveMdError, setSaveMdError] = useState<string | null>(null);
+  const [toolbarActive, setToolbarActive] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    justifyLeft: false,
+    justifyCenter: false,
+    justifyRight: false,
+    justifyFull: false,
+  });
   const bodyAbortRef = useRef<AbortController | null>(null);
   const bodyShouldStartRef = useRef(true);
   const bodyContentScrollRef = useRef<HTMLDivElement>(null);
-  const optimizeEditorRef = useRef<HTMLTextAreaElement>(null);
   const previewEditableRef = useRef<HTMLDivElement>(null);
   const bodySectionsRef = useRef<string[]>([]);
-
-  const turndownService = useRef(
-    new TurndownService({
-      hr: "------------------",
-    })
-  ).current;
+  /** 点击格式按钮时保存的选区，避免点击导致选区丢失 */
+  const savedRangeRef = useRef<Range | null>(null);
 
   const CONCURRENCY = 3;
+
+  /** 根据当前选区更新工具栏按钮高亮 */
+  const updateToolbarState = useCallback(() => {
+    if (!previewEditableRef.current?.contains(document.activeElement)) return;
+    setToolbarActive({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      justifyLeft: document.queryCommandState("justifyLeft"),
+      justifyCenter: document.queryCommandState("justifyCenter"),
+      justifyRight: document.queryCommandState("justifyRight"),
+      justifyFull: document.queryCommandState("justifyFull"),
+    });
+  }, []);
+  useEffect(() => {
+    document.addEventListener("selectionchange", updateToolbarState);
+    return () => document.removeEventListener("selectionchange", updateToolbarState);
+  }, [updateToolbarState]);
 
   const buildFullTextFromSections = useCallback(
     (sections: string[]) => {
@@ -105,7 +146,9 @@ export default function ReportForm() {
     setContentHistoryState((prev) => {
       if (prev.index <= 0) return prev;
       const newIndex = prev.index - 1;
-      setBodyContent(prev.history[newIndex]);
+      const html = prev.history[newIndex];
+      setBodyContent(html);
+      if (previewEditableRef.current) previewEditableRef.current.innerHTML = html;
       return { ...prev, index: newIndex };
     });
   }, []);
@@ -114,10 +157,32 @@ export default function ReportForm() {
     setContentHistoryState((prev) => {
       if (prev.index >= prev.history.length - 1) return prev;
       const newIndex = prev.index + 1;
-      setBodyContent(prev.history[newIndex]);
+      const html = prev.history[newIndex];
+      setBodyContent(html);
+      if (previewEditableRef.current) previewEditableRef.current.innerHTML = html;
       return { ...prev, index: newIndex };
     });
   }, []);
+
+  /** 编辑已有文档：用 initialData 填充并进入正文/优化步骤（须在 addToContentHistory 之后） */
+  const initialDataApplied = useRef(false);
+  useEffect(() => {
+    if (!initialData || initialDataApplied.current) return;
+    initialDataApplied.current = true;
+    setTopic(initialData.topic || "");
+    if (initialData.outline?.length) {
+      setOutline(initialData.outline);
+      setStep("body");
+    }
+    if (typeof initialData.referenceText === "string" && initialData.referenceText.trim()) {
+      setReferenceText(initialData.referenceText.trim());
+    }
+    if (initialData.body?.trim()) {
+      addToContentHistory(initialData.body);
+      setBodyCompleted(true);
+      setStep("optimize");
+    }
+  }, [initialData, addToContentHistory]);
 
   const editableOutline = outline ?? [];
 
@@ -166,6 +231,7 @@ export default function ReportForm() {
             reportTemplate,
             coreContent: coreContent || undefined,
             styleMode,
+            referenceText: referenceText || undefined,
           }),
           signal: ac.signal,
         });
@@ -221,6 +287,7 @@ export default function ReportForm() {
           reportTemplate,
           coreContent: coreContent || undefined,
           styleMode,
+          referenceText: referenceText || undefined,
         }),
         signal: ac.signal,
       });
@@ -271,7 +338,7 @@ export default function ReportForm() {
       setIsBodyGenerating(false);
       bodyAbortRef.current = null;
     }
-  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, bodyGenMode, buildFullTextFromSections, addToContentHistory]);
+  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, bodyGenMode, referenceText, buildFullTextFromSections, addToContentHistory]);
 
   useEffect(() => {
     if (step !== "body") {
@@ -302,19 +369,18 @@ export default function ReportForm() {
     }
   }, [step, bodyContent, contentHistoryState.history.length]);
 
-  // 内容优化：将 bodyContent 同步到可编辑预览区（仅在未聚焦时，避免覆盖用户正在输入的内容）
+  // 内容优化：将 bodyContent（富文本 HTML）同步到可编辑预览区（仅在未聚焦时）
   useEffect(() => {
     if (step !== "optimize" || !previewEditableRef.current) return;
     if (previewEditableRef.current?.contains(document.activeElement)) return;
-    const md = ensureSectionHeadersAsH2(bodyContent || "");
-    previewEditableRef.current.innerHTML = md ? marked.parse(md) as string : "";
-  }, [step, bodyContent, ensureSectionHeadersAsH2]);
+    previewEditableRef.current.innerHTML = bodyContent || "";
+  }, [step, bodyContent]);
 
   const handlePreviewEditableBlur = useCallback(() => {
     const el = previewEditableRef.current;
     if (!el) return;
-    const md = turndownService.turndown(el.innerHTML || "");
-    if (md !== bodyContent) addToContentHistory(md);
+    const html = el.innerHTML || "";
+    if (html !== bodyContent) addToContentHistory(html);
   }, [bodyContent, addToContentHistory]);
 
 
@@ -332,34 +398,46 @@ export default function ReportForm() {
   };
 
   const handleEnterOptimize = () => {
+    const md = ensureSectionHeadersAsH2(bodyContent || "");
+    const html = md ? (marked.parse(md) as string) : "";
+    setBodyContent(html);
+    setContentHistoryState(html ? { history: [html], index: 0 } : { history: [], index: -1 });
     setStep("optimize");
   };
 
   const isPreviewEditableFocused = () =>
     previewEditableRef.current?.contains(document.activeElement) ?? false;
 
-  const insertMarkdown = (before: string, after: string) => {
-    if (isPreviewEditableFocused()) return; // 预览区用 execCommand，见下方按钮
-    const el = optimizeEditorRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = bodyContent;
-    const selected = text.slice(start, end);
-    const newText = text.slice(0, start) + before + selected + after + text.slice(end);
-    addToContentHistory(newText);
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + before.length, end + before.length);
-    }, 0);
-  };
+  /** 点击格式按钮时在 mousedown 阶段保存选区，避免点击导致选区丢失 */
+  const saveSelectionForFormat = useCallback(() => {
+    const el = previewEditableRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer)) return;
+    savedRangeRef.current = range.cloneRange();
+  }, []);
 
-  const execPreviewFormat = (command: "bold" | "italic" | "underline") => {
-    if (isPreviewEditableFocused()) {
+  /** 执行富文本格式命令（粗体/斜体/下划线/对齐），执行后同步内容到 state 与历史 */
+  const execRichTextFormat = useCallback(
+    (command: "bold" | "italic" | "underline" | "justifyLeft" | "justifyCenter" | "justifyRight" | "justifyFull") => {
+      const el = previewEditableRef.current;
+      if (!el) return;
+      el.focus();
+      const sel = window.getSelection();
+      if (sel && savedRangeRef.current) {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+        savedRangeRef.current = null;
+      }
       document.execCommand(command, false);
-      previewEditableRef.current?.focus();
-    } else insertMarkdown(command === "bold" ? "**" : "*", command === "bold" ? "**" : "*");
-  };
+      const html = el.innerHTML || "";
+      setBodyContent(html);
+      addToContentHistory(html);
+      setTimeout(updateToolbarState, 0);
+    },
+    [addToContentHistory, updateToolbarState]
+  );
 
   const runAiTool = useCallback(
     async (action: "polish" | "simplify" | "expand") => {
@@ -395,8 +473,7 @@ export default function ReportForm() {
         range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
-        const md = turndownService.turndown(el.innerHTML || "");
-        addToContentHistory(md);
+        addToContentHistory(el.innerHTML || "");
       } finally {
         setAiToolLoading(null);
       }
@@ -404,13 +481,34 @@ export default function ReportForm() {
     [addToContentHistory]
   );
 
-  /** 使用 @mohtasham/md-to-docx 将 Markdown 转为 Word 并下载（标题、加粗等转为 Word 样式，横线等不导出）。 */
-  const exportAsWord = useCallback(async (content?: string) => {
-    const raw = content != null ? content : bodyContent;
-    const md = typeof raw === "string" ? raw : "";
-    const blob = await convertMarkdownToDocx(md || " ", {
-      documentType: "document",
+  /** 获取当前正文富文本 HTML（优化步骤取 contentEditable，正文步骤由 Markdown 转 HTML） */
+  const getCurrentBodyHtml = useCallback(() => {
+    if (step === "optimize" && previewEditableRef.current) {
+      return previewEditableRef.current.innerHTML || bodyContent;
+    }
+    if (isBodyGenerating && bodySections.length && outline?.length) {
+      const md = buildFullTextFromSections(bodySections);
+      return md ? (marked.parse(ensureSectionHeadersAsH2(md)) as string) : "";
+    }
+    const md = ensureSectionHeadersAsH2(bodyContent || "");
+    return md ? (marked.parse(md) as string) : "";
+  }, [step, bodyContent, isBodyGenerating, bodySections, outline, buildFullTextFromSections, ensureSectionHeadersAsH2]);
+
+  /** 富文本 HTML 导出为 Word（调用服务端 html-to-docx） */
+  const exportAsWord = useCallback(async (contentHtml?: string) => {
+    const html = contentHtml != null ? contentHtml : getCurrentBodyHtml();
+    const body = (typeof html === "string" && html.trim()) ? html : "<p></p>";
+    const res = await fetch("/api/export-docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html: body }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error(err);
+      return;
+    }
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -418,7 +516,42 @@ export default function ReportForm() {
     a.click();
     URL.revokeObjectURL(url);
     setExportSuccess(true);
-  }, [bodyContent, topic]);
+  }, [topic, getCurrentBodyHtml]);
+
+  /** 保存富文本文档到服务端（需 userId） */
+  const saveDocument = useCallback(async () => {
+    if (!userId) return;
+    setSaveMdError(null);
+    setSaveMdLoading(true);
+    try {
+      const title = (topic || "未命名文档").slice(0, 100);
+      const outlineList = outline ?? [];
+      const body = getCurrentBodyHtml();
+      const url = docId
+        ? `/api/users/${encodeURIComponent(userId)}/docs/${encodeURIComponent(docId)}`
+        : `/api/users/${encodeURIComponent(userId)}/docs`;
+      const method = docId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, topic, outline: outlineList, body, referenceText: referenceText || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveMdError(data.error || "保存失败");
+        return;
+      }
+      if (!docId && data.id) {
+        router.replace(`/user/${encodeURIComponent(userId)}/doc/${encodeURIComponent(data.id)}`);
+        return;
+      }
+    } catch (e) {
+      setSaveMdError("网络异常，请重试");
+      console.error(e);
+    } finally {
+      setSaveMdLoading(false);
+    }
+  }, [userId, docId, topic, outline, referenceText, getCurrentBodyHtml, router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files;
@@ -447,6 +580,7 @@ export default function ReportForm() {
         return;
       }
       if (data.outline) setOutline(data.outline);
+      setReferenceText(typeof data.referenceText === "string" ? data.referenceText : "");
     } catch (e) {
       setError("网络或请求异常，请稍后重试");
       console.error(e);
@@ -463,9 +597,19 @@ export default function ReportForm() {
     <div className="flex h-screen flex-col overflow-hidden bg-[#f5f7fa]">
       {/* 顶部导航 */}
       <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <h1 className="text-lg font-semibold text-gray-800">
-          AI 智能写作平台
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold text-gray-800">
+            AI 智能写作平台
+          </h1>
+          {userId && (
+            <Link
+              href={`/user/${encodeURIComponent(userId)}`}
+              className="text-sm text-[#2563eb] hover:underline"
+            >
+              返回文档列表
+            </Link>
+          )}
+        </div>
         <nav className="flex items-center gap-2 text-sm">
           {STEPS.map((s, i) => (
             <span key={s.id} className="flex items-center gap-2">
@@ -556,7 +700,7 @@ export default function ReportForm() {
                   multiple
                   onChange={handleFileChange}
                   className="input-file-hidden"
-                  accept=".pdf,.doc,.docx,.txt"
+                  accept=".txt,.doc,.docx"
                 />
                 <div className="flex items-center gap-3">
                   <button
@@ -736,6 +880,7 @@ export default function ReportForm() {
                   setTopic("");
                   setCoreContent("");
                   setFiles([]);
+                  setReferenceText("");
                   setBodyContent("");
                   setContentHistoryState({ history: [], index: -1 });
                   setBodySections([]);
@@ -867,16 +1012,29 @@ export default function ReportForm() {
                   >
                     历史版本
                   </button>
+                  {userId && (
+                    <button
+                      type="button"
+                      disabled={(!bodyContent && !(isBodyGenerating && bodySections.length)) || saveMdLoading}
+                      className="rounded-lg border border-[#2563eb] bg-white px-3 py-1.5 text-sm font-medium text-[#2563eb] hover:bg-[#2563eb]/5 disabled:opacity-50"
+                      onClick={saveDocument}
+                    >
+                      {saveMdLoading ? "保存中…" : "保存"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={!bodyContent && !(isBodyGenerating && bodySections.length)}
                     className="rounded-lg bg-[#2563eb] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1d4ed8] disabled:opacity-50"
-                    onClick={() => exportAsWord(isBodyGenerating && bodySections.length ? buildFullTextFromSections(bodySections) : undefined)}
+                    onClick={() => exportAsWord()}
                   >
-                    保存并导出 Word
+                    导出 Word
                   </button>
                 </div>
               </div>
+              {saveMdError && (
+                <p className="mt-2 text-sm text-red-600">{saveMdError}</p>
+              )}
               <div
                 ref={bodyContentScrollRef}
                 className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-gray-200 bg-gray-50/30 p-4"
@@ -956,60 +1114,88 @@ export default function ReportForm() {
               </div>
               <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-gray-100 pb-2">
                 <select
-                  className="rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
+                  className="hidden rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
                   defaultValue="段落"
+                  aria-hidden
                 >
                   <option value="段落">段落</option>
                 </select>
                 <button
                   type="button"
-                  className="rounded p-1.5 text-gray-600 hover:bg-gray-100"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.bold ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
                   title="粗体"
-                  onClick={() => execPreviewFormat("bold")}
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("bold")}
                 >
                   <span className="font-bold">B</span>
                 </button>
                 <button
                   type="button"
-                  className="rounded p-1.5 italic text-gray-600 hover:bg-gray-100"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.italic ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
                   title="斜体"
-                  onClick={() => execPreviewFormat("italic")}
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("italic")}
                 >
-                  I
+                  <span className="italic">I</span>
                 </button>
                 <button
                   type="button"
-                  className="rounded p-1.5 text-gray-600 hover:bg-gray-100 underline"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.underline ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
                   title="下划线"
-                  onClick={() => execPreviewFormat("underline")}
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("underline")}
                 >
-                  U
+                  <span className="underline">U</span>
                 </button>
-                <div className="mx-1 w-px bg-gray-200" />
-                <button type="button" className="rounded p-1.5 text-gray-600 hover:bg-gray-100" title="左对齐">
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 5h16v2H4V5zm0 4h16v2H4V9zm0 4h10v2H4v-2z" />
-                  </svg>
-                </button>
-                <button type="button" className="rounded p-1.5 text-gray-600 hover:bg-gray-100" title="居中">
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 5h16v2H4V5zm2 4h12v2H6V9zm0 4h12v2H6v-2z" />
-                  </svg>
-                </button>
-                <button type="button" className="rounded p-1.5 text-gray-600 hover:bg-gray-100" title="右对齐">
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 5h16v2H4V5zm4 4h12v2H8V9zm2 4h8v2h-8v-2z" />
-                  </svg>
-                </button>
-                <button type="button" className="rounded p-1.5 text-gray-600 hover:bg-gray-100" title="两端对齐">
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 5h16v2H4V5zm0 4h16v2H4V9zm0 4h16v2H4v-2z" />
-                  </svg>
-                </button>
-                <div className="mx-1 w-px bg-gray-200" />
+                <div className="mx-1 w-px shrink-0 self-stretch bg-gray-200" />
                 <button
                   type="button"
-                  className="rounded p-1.5 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.justifyLeft ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
+                  title="左对齐"
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("justifyLeft")}
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M4 5h16v2H4V5zM4 10h8v2H4V10zM4 15h16v2H4V15z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.justifyCenter ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
+                  title="居中对齐"
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("justifyCenter")}
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M4 5h16v2H4V5zM8 10h8v2H8V10zM4 15h16v2H4V15z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.justifyRight ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
+                  title="右对齐"
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("justifyRight")}
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M4 5h16v2H4V5zM12 10h8v2H12V10zM4 15h16v2H4V15z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-gray-100 ${toolbarActive.justifyFull ? "bg-blue-100 text-blue-700" : "text-gray-600"}`}
+                  title="两端对齐"
+                  onMouseDown={(e) => { e.preventDefault(); saveSelectionForFormat(); }}
+                  onClick={() => execRichTextFormat("justifyFull")}
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M4 5h16v2H4V5zM4 10h16v2H4V10zM4 15h16v2H4V15z" />
+                  </svg>
+                </button>
+                <div className="mx-1 w-px shrink-0 self-stretch bg-gray-200" />
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none"
                   title="撤销"
                   onClick={handleContentUndo}
                   disabled={contentHistoryState.index <= 0}
@@ -1020,7 +1206,7 @@ export default function ReportForm() {
                 </button>
                 <button
                   type="button"
-                  className="rounded p-1.5 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none"
                   title="重做"
                   onClick={handleContentRedo}
                   disabled={contentHistoryState.index >= contentHistoryState.history.length - 1 || contentHistoryState.history.length === 0}
@@ -1037,22 +1223,32 @@ export default function ReportForm() {
                   ref={previewEditableRef}
                   contentEditable
                   suppressContentEditableWarning
+                  onFocus={updateToolbarState}
                   onBlur={handlePreviewEditableBlur}
                   className="markdown-body p-4 font-sans text-sm leading-relaxed text-gray-800 outline-none [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-base [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_strong]:font-semibold empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
                   data-placeholder="暂无内容，请先生成正文。"
                 />
               </div>
-              <div className="mt-4 flex justify-end">
+              {saveMdError && (
+                <p className="mt-2 text-sm text-red-600">{saveMdError}</p>
+              )}
+              <div className="mt-4 flex justify-end gap-2">
+                {userId && (
+                  <button
+                    type="button"
+                    disabled={saveMdLoading}
+                    className="rounded-lg border border-[#2563eb] bg-white px-4 py-2 text-sm font-medium text-[#2563eb] hover:bg-[#2563eb]/5 disabled:opacity-50"
+                    onClick={saveDocument}
+                  >
+                    {saveMdLoading ? "保存中…" : "保存"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8]"
-                  onClick={() => {
-                    const el = previewEditableRef.current;
-                    const content = el ? turndownService.turndown(el.innerHTML || "") : bodyContent;
-                    exportAsWord(content);
-                  }}
+                  onClick={() => exportAsWord()}
                 >
-                  保存并导出 Word
+                  导出 Word
                 </button>
               </div>
             </div>
