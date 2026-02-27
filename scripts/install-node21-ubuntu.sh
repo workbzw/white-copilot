@@ -9,7 +9,8 @@ echo "安装 Node.js 21 ..."
 apt update
 apt install -y curl
 
-curl -fsSL https://deb.nodesource.com/setup_21.x | bash -
+# 注意：sudo 要加在 bash 前，不能加在 curl 前，否则脚本内部 apt 无权限
+curl -fsSL https://deb.nodesource.com/setup_21.x | sudo bash -
 apt install -y nodejs
 
 echo "完成。"

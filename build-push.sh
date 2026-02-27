@@ -6,12 +6,12 @@ set -e
 
 REGISTRY="ccr.ccs.tencentyun.com/workbzw"
 IMAGE="write-copilot"
-TAG="${1:-0227}"
+TAG="${1:-0228}"
 
 FULL_IMAGE="${REGISTRY}/${IMAGE}:${TAG}"
 
-echo "构建镜像: ${FULL_IMAGE}"
-docker build -t "$FULL_IMAGE" .
+echo "构建镜像: ${FULL_IMAGE} (linux/amd64，避免在 x86 服务器上 exec format error)"
+docker build --platform linux/amd64 -t "$FULL_IMAGE" .
 
 echo "推送镜像: ${FULL_IMAGE}"
 docker push "$FULL_IMAGE"
