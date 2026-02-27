@@ -10,7 +10,7 @@ export LLM_API_KEY="sk-sntgzyndiukafftszxatgcjfawdneobqkhravkgysxounyoh"
 
 docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:0228
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
-docker run -d -p 3080:3080 \
+docker run -d -p 3080:3000 \
   -e LLM_BASE_URL="$LLM_BASE_URL" \
   -e LLM_MODEL="$LLM_MODEL" \
   -e LLM_API_KEY="$LLM_API_KEY" \
