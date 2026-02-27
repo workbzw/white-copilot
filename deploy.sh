@@ -18,4 +18,4 @@ docker run -d -p 3080:3080 \
   --name write-copilot \
   ccr.ccs.tencentyun.com/workbzw/write-copilot:0227
 
-echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3090"
+echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3080"
