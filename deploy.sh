@@ -8,7 +8,7 @@ export LLM_MODEL="deepseek-ai/DeepSeek-V3.2"
 export LLM_API_KEY="sk-kmohdwnilkdvxhrjvxflswurrkhksxohlsszfomvtaspuvxp"
 # ========================================
 
-docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:0227
+docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:0228
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
 docker run -d -p 3080:3080 \
   -e PORT=3080 \
@@ -17,6 +17,6 @@ docker run -d -p 3080:3080 \
   -e LLM_API_KEY="$LLM_API_KEY" \
   -v "$(pwd)/data:/app/data" \
   --name write-copilot \
-  ccr.ccs.tencentyun.com/workbzw/write-copilot:0227
+  ccr.ccs.tencentyun.com/workbzw/write-copilot:0228
 
 echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3080"
