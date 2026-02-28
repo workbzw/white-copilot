@@ -3,9 +3,9 @@
 # 用法: 先修改下面三个变量，再 chmod +x deploy.sh && ./deploy.sh
 
 # ========== 按你的环境修改这里 ==========
-export LLM_BASE_URL="https://api.siliconflow.cn/v1"
-export LLM_MODEL="deepseek-ai/DeepSeek-V3.2"
-export LLM_API_KEY="sk-kmohdwnilkdvxhrjvxflswurrkhksxohlsszfomvtaspuvxp"
+export LLM_BASE_URL="http://10.96.91.228:1025/v1"
+export LLM_MODEL="deepseek_32b"
+export LLM_API_KEY="sk-sntgzyndiukafftszxatgcjfawdneobqkhravkgysxounyoh"
 # ========================================
 
 docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:0228
