@@ -1,6 +1,6 @@
 # 构建: docker build -t writing-copilot .
 # 运行（内部大模型）:
-#   docker run -p 3000:3000 \
+#   docker run -p 3080:3080 \
 #     -e LLM_BASE_URL=https://your-llm-api/v1 \
 #     -e LLM_MODEL=your-model-name \
 #     -e LLM_API_KEY=your-api-key \
@@ -24,7 +24,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3080
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -39,6 +39,6 @@ RUN mkdir -p data/users && chown -R nextjs:nodejs data
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 3080
 
 CMD ["node", "server.js"]
