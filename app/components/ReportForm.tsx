@@ -263,6 +263,14 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     setIsBodyGenerating(true);
     setBodySections(bodyGenMode === "sections" ? outline.map(() => "") : []);
 
+    // 防止接口/流挂起导致一直“正在生成”：90 秒后自动中止
+    const timeoutMs = 90_000;
+    const timeoutId = setTimeout(() => {
+      if (bodyAbortRef.current === ac) {
+        ac.abort();
+      }
+    }, timeoutMs);
+
     if (bodyGenMode === "full") {
       try {
         const res = await fetch("/api/body", {
@@ -284,6 +292,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           const data = await res.json().catch(() => ({}));
           const raw = (data.error as string) || "生成失败，请重试";
           setBodyContent(sanitizeBodyError(raw));
+          clearTimeout(timeoutId);
+          setIsBodyGenerating(false);
           return;
         }
         const knowledgeStatusLabel: Record<string, string> = {
@@ -297,6 +307,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         const decoder = new TextDecoder();
         if (!reader) {
           setBodyContent("生成失败，请重试");
+          clearTimeout(timeoutId);
+          setIsBodyGenerating(false);
           return;
         }
         let buffer = "";
@@ -358,6 +370,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           setBodyContent((prev) => prev || sanitizeBodyError(msg));
         }
       } finally {
+        clearTimeout(timeoutId);
         setIsBodyGenerating(false);
         bodyAbortRef.current = null;
       }
@@ -481,6 +494,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         setBodyContent((prev) => prev || sanitizeBodyError(msg));
       }
     } finally {
+      clearTimeout(timeoutId);
       setIsBodyGenerating(false);
       bodyAbortRef.current = null;
     }

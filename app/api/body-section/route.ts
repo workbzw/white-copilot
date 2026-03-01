@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
       20,
       Math.floor(Number(body.wordCountPerSection) || 600)
     );
-    // 按本节字数预留足够 token，避免被截断
-    const maxTokens = Math.min(16384, Math.max(256, Math.ceil(wordCountPerSection * 2)));
+    // 按本节字数限制 token，避免产出远超字数
+    const maxTokens = Math.min(16384, Math.max(128, Math.ceil((wordCountPerSection * 1.2) + 50)));
 
     const reportTemplate = (body.reportTemplate as string)?.trim() || "公告模板";
     const coreContent = (body.coreContent as string)?.trim() || "";
@@ -80,6 +80,17 @@ export async function POST(request: NextRequest) {
     const hasLocalRef = !!referenceText;
     const hasKnowledge = knowledgeStatus === "used";
 
+    if (knowledgeQuerySent) {
+      console.log("[知识库检索] 本节", {
+        检索关键词: sectionQuery,
+        状态: knowledgeStatus,
+        命中条数: hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0,
+      });
+      if (knowledgeText) {
+        console.log("[知识库检索结果] 本节注入内容：", knowledgeText);
+      }
+    }
+
     if (!outline?.length || !topic || !Number.isInteger(sectionIndex) || sectionIndex < 0) {
       return new Response(
         JSON.stringify({ error: "缺少报告主题、大纲或节序号" }),
@@ -106,7 +117,7 @@ export async function POST(request: NextRequest) {
 ${styleHint}
 要求：
 1. 本节标题为：${sectionTitle}。不要在正文中重复该标题，只写标题下方的正文。
-2. 本节字数必须达到至少 ${wordCountPerSection} 字（可略多不可少），写满再结束。
+2. 本节字数须控制在 ${wordCountPerSection} 字以内，约 ${wordCountPerSection} 字即可，不要超过 ${wordCountPerSection} 字。
 3. 只输出本节正文，不要输出“好的”“以下是”等前缀，不要写其他节。
 4. 使用中文，内容专业、数据与逻辑可信。
 5. ${refRule}`;
@@ -122,7 +133,7 @@ ${styleHint}
     const outlineContext = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const userContent = [
       `报告主题：${topic.normalize("NFC")}`,
-      `字数要求：本节至少 ${wordCountPerSection} 字，宁多勿少，写满再结束`,
+      `字数要求：本节控制在 ${wordCountPerSection} 字以内，约 ${wordCountPerSection} 字，不要超过 ${wordCountPerSection} 字`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
       referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
