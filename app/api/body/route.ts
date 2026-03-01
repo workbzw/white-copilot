@@ -169,6 +169,11 @@ ${styleHint}
           return origFetch(input, init);
         };
         try {
+          // 若有知识库检索结果，在流开头写一行 JSON，供前端控制台展示
+          if (hasKnowledge && knowledgeText) {
+            const metaLine = JSON.stringify({ _knowledge: knowledgeText }) + "\n";
+            safeEnqueue(encodeUtf8Chunk(metaLine));
+          }
           const messages = [
             new SystemMessage(systemPrompt),
             new HumanMessage(userContent),

@@ -309,14 +309,39 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           setBodyContent("生成失败，请重试");
           return;
         }
+        let buffer = "";
+        let contentStarted = false;
         let text = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          text += decoder.decode(value, { stream: true });
-          setBodyContent(text);
-          setBodyProgress((p) => Math.min(99, p + 1));
+          buffer += decoder.decode(value, { stream: true });
+          if (!contentStarted) {
+            const idx = buffer.indexOf("\n");
+            if (idx >= 0) {
+              const line = buffer.slice(0, idx);
+              const rest = buffer.slice(idx + 1);
+              try {
+                const meta = JSON.parse(line) as { _knowledge?: string };
+                if (meta && typeof meta._knowledge === "string") {
+                  console.log("[知识库检索结果] 全文注入内容：", meta._knowledge);
+                }
+              } catch {
+                /* 首行非 JSON，整段当正文 */
+              }
+              buffer = rest;
+              contentStarted = true;
+            }
+          }
+          if (contentStarted) {
+            text += buffer;
+            buffer = "";
+            setBodyContent(text);
+            setBodyProgress((p) => Math.min(99, p + 1));
+          }
         }
+        if (buffer) text += buffer;
+        setBodyContent(text);
         setBodyProgress(100);
         setBodyCompleted(true);
         addToContentHistory(text);
@@ -380,11 +405,39 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error("无法读取响应流");
+      let buffer = "";
+      let contentStarted = false;
       let sectionText = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        sectionText += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
+        if (!contentStarted) {
+          const idx = buffer.indexOf("\n");
+          if (idx >= 0) {
+            const line = buffer.slice(0, idx);
+            const rest = buffer.slice(idx + 1);
+            try {
+              const meta = JSON.parse(line) as { _knowledge?: string };
+              if (meta && typeof meta._knowledge === "string") {
+                console.log("[知识库检索结果] 本节注入内容：", meta._knowledge);
+              }
+            } catch {
+              /* 首行非 JSON，整段当正文 */
+            }
+            buffer = rest;
+            contentStarted = true;
+          }
+        }
+        if (contentStarted) {
+          sectionText += buffer;
+          buffer = "";
+          bodySectionsRef.current[index] = sectionText;
+          setBodySections([...bodySectionsRef.current]);
+        }
+      }
+      if (buffer) {
+        sectionText += buffer;
         bodySectionsRef.current[index] = sectionText;
         setBodySections([...bodySectionsRef.current]);
       }
