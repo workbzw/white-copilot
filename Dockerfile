@@ -1,4 +1,6 @@
 # 构建: docker build -t writing-copilot .
+# 若拉取 node:20-alpine 超时（国内常见），可改用镜像源，例如：
+#   docker build --build-arg NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine -t writing-copilot .
 # 运行（内部大模型）:
 #   docker run -p 3080:3080 \
 #     -e LLM_BASE_URL=https://your-llm-api/v1 \
@@ -8,7 +10,8 @@
 #     writing-copilot
 # 不设 LLM_* 时使用硅基流动默认地址，需 SILICONFLOW_API_KEY。
 # 构建阶段
-FROM node:20-alpine AS builder
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -19,7 +22,7 @@ COPY . .
 RUN npm run build
 
 # 运行阶段（仅保留 standalone 输出，镜像更小）
-FROM node:20-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 
 WORKDIR /app
 

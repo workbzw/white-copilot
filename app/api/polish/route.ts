@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { chatCompletion } from "@/lib/siliconflow";
+import { getSiliconFlowChatModel } from "@/lib/siliconflow";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 30;
 
@@ -60,15 +61,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { system, userPrefix } = ACTION_PROMPTS[action];
-    const messages = [
-      { role: "system" as const, content: system },
-      { role: "user" as const, content: userPrefix + input },
-    ];
-    const text = (await chatCompletion({
-      messages,
+    const llm = getSiliconFlowChatModel({
       temperature: 0.4,
       maxTokens: 2048,
-    })).trim();
+    });
+
+    const messages = [
+      new SystemMessage(system),
+      new HumanMessage(userPrefix + input),
+    ];
+
+    const response = await llm.invoke(messages);
+    const text =
+      typeof response.content === "string"
+        ? response.content.trim()
+        : String(response.content ?? "").trim();
 
     return new Response(JSON.stringify({ text }), {
       status: 200,

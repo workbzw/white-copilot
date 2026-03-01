@@ -1,11 +1,8 @@
 /**
  * 知识库检索：调用外部 retrieve API，将检索结果拼成可注入报告的文本。
- * 使用 Axios 而非 fetch，避免 Node fetch 在含中文响应时的 ByteString/255 报错。
  * 环境变量：KNOWLEDGE_API_KEY、KNOWLEDGE_BASE_URL、
  *   KNOWLEDGE_DATASET_ID（单个）或 KNOWLEDGE_DATASET_IDS（多个，逗号分隔）
  */
-
-import axios from "axios";
 
 const DEFAULT_KNOWLEDGE_BASE_URL = "http://192.168.93.128:11014";
 
@@ -88,8 +85,26 @@ export async function retrieveFromKnowledge(
     };
 
     const url = `${baseUrl}/v1/datasets/${encodeURIComponent(datasetId)}/retrieve`;
-    const bodyBytes = Buffer.from(JSON.stringify(payload), "utf8");
-    let data: {
+    const bodyStr = JSON.stringify(payload);
+    const bodyBytes = Buffer.from(bodyStr, "utf8");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: bodyBytes,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[knowledge-retrieve] API 请求失败", res.status, url, text.slice(0, 500));
+      continue;
+    }
+
+    const rawBytes = await res.arrayBuffer();
+    const rawStr = new TextDecoder("utf-8").decode(rawBytes);
+    const data = JSON.parse(rawStr) as {
       query?: { content?: string };
       records?: Array<{
         segment?: { content?: string; document?: { name?: string }; [key: string]: unknown };
@@ -101,28 +116,6 @@ export async function retrieveFromKnowledge(
       chunks?: Array<{ content?: string; text?: string }>;
       data?: Array<{ content?: string; text?: string }>;
     };
-    try {
-      const res = await axios.post(url, bodyBytes, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json; charset=utf-8",
-        },
-        responseType: "arraybuffer",
-        validateStatus: () => true,
-      });
-      const rawStr = new TextDecoder("utf-8").decode(
-        res.data instanceof ArrayBuffer ? res.data : new Uint8Array(res.data)
-      );
-      if (res.status < 200 || res.status >= 300) {
-        console.error("[knowledge-retrieve] API 请求失败", res.status, url, rawStr.slice(0, 500));
-        continue;
-      }
-      data = JSON.parse(rawStr) as typeof data;
-    } catch (e) {
-      console.error("[knowledge-retrieve] 请求异常", url, e);
-      continue;
-    }
-
     const list =
       data.records ??
       data.chunks ??

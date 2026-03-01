@@ -1,35 +1,60 @@
+import "./utf8-fetch-patch";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+
 /**
- * 大模型调用：使用 Axios 调用 OpenAI 兼容 API，避免 Node fetch 的 ByteString 中文问题。
- * 环境变量：LLM_BASE_URL、LLM_MODEL、LLM_API_KEY。
+ * 大模型调用：支持内部 OpenAI 兼容 API（通过 baseURL / model / apiKey 配置），
+ * 未配置时回退到硅基流动默认地址。
  */
 
-import {
-  chatCompletion as llmChatCompletion,
-  streamChatCompletion,
-  type ChatMessage,
-} from "@/lib/llm-axios";
-
-/** 非流式对话（供 polish、outline 等使用） */
-export async function chatCompletion(params: {
-  messages: ChatMessage[];
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-}): Promise<string> {
-  return llmChatCompletion({
-    ...params,
-    model: params.model || getModel(),
-  });
-}
-
+const DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1";
 const DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2";
+
+function getBaseUrl(): string {
+  return process.env.LLM_BASE_URL?.trim() || DEFAULT_BASE_URL;
+}
 
 function getModel(): string {
   return process.env.LLM_MODEL?.trim() || process.env.SILICONFLOW_MODEL?.trim() || DEFAULT_MODEL;
 }
 
+function getApiKey(): string {
+  const key = process.env.LLM_API_KEY?.trim() || process.env.SILICONFLOW_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "未配置大模型 API Key，请在 .env 中设置 LLM_API_KEY（或 SILICONFLOW_API_KEY）"
+    );
+  }
+  return key;
+}
+
+/**
+ * 获取 Chat 模型实例（OpenAI 兼容接口）。
+ * 通过环境变量配置内部大模型：LLM_BASE_URL、LLM_MODEL、LLM_API_KEY。
+ */
+export function getSiliconFlowChatModel(options?: {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}) {
+  const model = options?.model?.trim() || getModel();
+  const apiKey = getApiKey();
+  const baseURL = getBaseUrl();
+  return new ChatOpenAI({
+    model,
+    apiKey,
+    configuration: {
+      baseURL,
+      apiKey,
+    },
+    temperature: options?.temperature ?? 0.7,
+    maxTokens: options?.maxTokens ?? 4096,
+  });
+}
+
 /**
  * 调用硅基流动生成报告大纲。
+ * 返回有序的大纲条目数组。
  */
 export async function generateReportOutline(params: {
   topic: string;
@@ -37,6 +62,8 @@ export async function generateReportOutline(params: {
   styleMode: "ai" | "standard";
   referenceText?: string;
 }): Promise<string[]> {
+  const llm = getSiliconFlowChatModel({ temperature: 0.5, maxTokens: 2048 });
+
   const styleHint =
     params.styleMode === "standard"
       ? "请按标准公文结构：报告摘要、背景与依据、现状与数据、问题分析、对策建议、结论与下一步工作等。"
@@ -58,17 +85,16 @@ ${styleHint}
   ].filter(Boolean);
   const userContent = userParts.join("\n\n");
 
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userContent },
+  const messages = [
+    new SystemMessage(systemPrompt),
+    new HumanMessage(userContent),
   ];
 
-  const text = await llmChatCompletion({
-    messages,
-    model: getModel(),
-    temperature: 0.5,
-    maxTokens: 2048,
-  });
+  const response = await llm.invoke(messages);
+  const text =
+    typeof response.content === "string"
+      ? response.content
+      : String(response.content ?? "");
 
   console.log("[SiliconFlow] 模型原始输出:\n", text);
   const outline = parseOutlineText(text);
@@ -76,27 +102,12 @@ ${styleHint}
   return outline;
 }
 
+/**
+ * 从模型输出文本解析为大纲条目数组（保留原文，仅按行分割并去空）。
+ */
 function parseOutlineText(text: string): string[] {
   return text
     .split(/\r?\n/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-}
-
-/**
- * 流式生成正文：返回异步迭代器，每次 yield 一段文本。
- * 供 /api/body 与 /api/body-section 使用。
- */
-export async function* streamChat(params: {
-  messages: ChatMessage[];
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-}): AsyncGenerator<string, void, unknown> {
-  yield* streamChatCompletion({
-    messages: params.messages,
-    model: params.model || getModel(),
-    temperature: params.temperature ?? 0.6,
-    maxTokens: params.maxTokens ?? 4096,
-  });
 }
