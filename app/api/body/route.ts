@@ -53,19 +53,34 @@ export async function POST(request: NextRequest) {
       maxTokens,
     });
 
+    type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";
-    if (process.env.KNOWLEDGE_API_KEY?.trim() && knowledgeDatasetIds.length > 0) {
+    let knowledgeStatus: KnowledgeStatus = "no_dataset";
+    let knowledgeQuerySent = "";
+
+    if (!process.env.KNOWLEDGE_API_KEY?.trim()) {
+      knowledgeStatus = "no_api_key";
+    } else if (knowledgeDatasetIds.length === 0) {
+      knowledgeStatus = "no_dataset";
+    } else {
+      knowledgeQuerySent = topic;
       try {
         knowledgeText = await retrieveFromKnowledge(topic, {
           topK: 5,
           datasetIds: knowledgeDatasetIds,
         });
+        if (knowledgeText?.trim()) {
+          knowledgeStatus = "used";
+        } else {
+          knowledgeStatus = "no_results";
+        }
       } catch (e) {
         console.warn("[body] 知识库检索失败，继续生成正文", e);
+        knowledgeStatus = "retrieval_failed";
       }
     }
     const hasLocalRef = !!referenceText?.trim();
-    const hasKnowledge = !!knowledgeText?.trim();
+    const hasKnowledge = knowledgeStatus === "used";
 
     const outlineText = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const styleHint =
@@ -154,7 +169,8 @@ ${styleHint}
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
         "X-Knowledge-Used": hasKnowledge ? "true" : "false",
-        "X-Knowledge-Query": hasKnowledge ? topic : "",
+        "X-Knowledge-Status": knowledgeStatus,
+        "X-Knowledge-Query": knowledgeQuerySent,
         "X-Knowledge-Record-Count": String(knowledgeRecordCount),
       },
     });

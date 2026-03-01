@@ -286,13 +286,21 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           setBodyContent(sanitizeBodyError(raw));
           return;
         }
-        const knowledgeUsed = res.headers.get("X-Knowledge-Used") === "true";
+        const knowledgeStatus = res.headers.get("X-Knowledge-Status") ?? "no_dataset";
         const knowledgeQuery = res.headers.get("X-Knowledge-Query") ?? "";
         const knowledgeCount = res.headers.get("X-Knowledge-Record-Count") ?? "0";
+        const knowledgeStatusLabel: Record<string, string> = {
+          used: "已使用",
+          no_api_key: "未配置 API Key",
+          no_dataset: "未选择知识库",
+          retrieval_failed: "检索失败",
+          no_results: "检索无结果",
+        };
         console.log("[知识库检索] 全文生成", {
           检索方式: "报告主题",
-          检索关键词: knowledgeQuery || "(未使用知识库)",
-          是否检索到内容: knowledgeUsed,
+          检索关键词: knowledgeQuery || "—",
+          知识库状态: knowledgeStatusLabel[knowledgeStatus] ?? knowledgeStatus,
+          是否检索到内容: knowledgeStatus === "used",
           命中条数: Number(knowledgeCount) || 0,
         });
         const reader = res.body?.getReader();
@@ -352,13 +360,21 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         const data = await res.json().catch(() => ({}));
         throw new Error((data.error as string) || `第 ${index + 1} 节生成失败`);
       }
-      const knowledgeUsed = res.headers.get("X-Knowledge-Used") === "true";
+      const knowledgeStatus = res.headers.get("X-Knowledge-Status") ?? "no_dataset";
       const knowledgeQuery = res.headers.get("X-Knowledge-Query") ?? "";
       const knowledgeCount = res.headers.get("X-Knowledge-Record-Count") ?? "0";
+      const knowledgeStatusLabel: Record<string, string> = {
+        used: "已使用",
+        no_api_key: "未配置 API Key",
+        no_dataset: "未选择知识库",
+        retrieval_failed: "检索失败",
+        no_results: "检索无结果",
+      };
       console.log(`[知识库检索] 第 ${index + 1} 节`, {
         检索方式: "报告主题 + 本节标题",
-        检索关键词: knowledgeQuery || "(未使用知识库)",
-        是否检索到内容: knowledgeUsed,
+        检索关键词: knowledgeQuery || "—",
+        知识库状态: knowledgeStatusLabel[knowledgeStatus] ?? knowledgeStatus,
+        是否检索到内容: knowledgeStatus === "used",
         命中条数: Number(knowledgeCount) || 0,
       });
       const reader = res.body?.getReader();

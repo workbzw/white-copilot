@@ -131,12 +131,20 @@ export async function retrieveFromKnowledge(
   }
 
   const result = allChunks.join("\n\n---\n\n");
-  console.log("[knowledge-retrieve] 成功", {
-    query: query.trim().slice(0, 50),
-    knowledgeBases: datasetIds.length,
-    recordCount: allChunks.length,
-    totalChars: result.length,
-  });
+  if (allChunks.length > 0) {
+    console.log("[knowledge-retrieve] 成功", {
+      query: query.trim().slice(0, 50),
+      knowledgeBases: datasetIds.length,
+      recordCount: allChunks.length,
+      totalChars: result.length,
+    });
+  } else {
+    console.log("[knowledge-retrieve] 无命中", {
+      query: query.trim().slice(0, 50),
+      knowledgeBases: datasetIds.length,
+      hint: "可能检索接口报错或返回格式不符，请查看上方是否有 API 请求失败日志",
+    });
+  }
   if (allChunks.length === 0) return "";
   return result;
 }
