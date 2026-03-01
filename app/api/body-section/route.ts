@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSiliconFlowChatModel } from "@/lib/siliconflow";
+import { streamChatCompletion } from "@/lib/llm-axios";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 60;
 
@@ -98,11 +97,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const llm = getSiliconFlowChatModel({
-      temperature: 0.6,
-      maxTokens,
-    });
-
     const styleHint =
       styleMode === "standard"
         ? "请严格按标准公文格式与用语撰写，层次清晰、用语规范。"
@@ -143,10 +137,13 @@ ${styleHint}
       .filter(Boolean)
       .join("\n\n");
 
-    /** 将 UTF-8 文本编码为流式 chunk，避免 ByteString（仅 0–255）导致的报错 */
     function encodeUtf8Chunk(text: string): Uint8Array {
       return new Uint8Array(Buffer.from(text, "utf8"));
     }
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userContent },
+    ];
     const stream = new ReadableStream({
       async start(controller) {
         const safeEnqueue = (data: Uint8Array) => {
@@ -168,15 +165,7 @@ ${styleHint}
           safeEnqueue(encodeUtf8Chunk(userMsg));
           safeClose();
         };
-        const origFetch = globalThis.fetch;
-        globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-          if (init?.body != null && typeof init.body === "string") {
-            init = { ...init, body: Buffer.from(init.body, "utf8") };
-          }
-          return origFetch(input, init);
-        };
         try {
-          // 流开头始终写一行知识库状态与结果，供前端控制台展示（无论检索成没成功）
           const knowledgeRecordCount = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
           const metaLine =
             JSON.stringify({
@@ -186,37 +175,18 @@ ${styleHint}
               _knowledgeText: knowledgeText || "",
             }) + "\n";
           safeEnqueue(encodeUtf8Chunk(metaLine));
-          const messages = [
-            new SystemMessage(systemPrompt),
-            new HumanMessage(userContent),
-          ];
-          const llmStream = await llm.stream(messages);
-          for await (const chunk of llmStream) {
-            const text =
-              typeof chunk.content === "string"
-                ? chunk.content
-                : String(chunk.content ?? "");
+          for await (const text of streamChatCompletion({
+            messages,
+            temperature: 0.6,
+            maxTokens,
+          })) {
             if (!text) continue;
-            try {
-              if (!safeEnqueue(encodeUtf8Chunk(text))) break;
-            } catch (encodeErr) {
-              const msg = (encodeErr as Error).message || "";
-              if (/ByteString|greater than 255/i.test(msg)) {
-                console.error("[body-section stream] 流片段编码异常（ByteString/非 Latin-1），已跳过该片段", msg);
-              } else throw encodeErr;
-            }
+            if (!safeEnqueue(encodeUtf8Chunk(text))) break;
           }
           safeClose();
         } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
           console.error("[body-section stream error]", e);
-          if (/ByteString|greater than 255|24180/i.test(errMsg)) {
-            emitError("\n[本节生成失败：当前环境无法正确处理含中文的引用或知识库内容，请尝试不勾选知识库或缩短引用后再试。]");
-          } else {
-            emitError("\n[本节生成中断或出错]");
-          }
-        } finally {
-          globalThis.fetch = origFetch;
+          emitError("\n[本节生成中断或出错]");
         }
       },
     });
@@ -236,12 +206,8 @@ ${styleHint}
   } catch (e) {
     console.error("[body-section API error]", e);
     const msg = e instanceof Error ? e.message : "本节生成失败，请重试";
-    const safeMsg =
-      /ByteString|greater than 255|24180/i.test(msg)
-        ? "本节生成失败：当前环境无法正确处理含中文的引用或知识库内容，请尝试不勾选知识库或缩短引用后再试。"
-        : msg;
     return new Response(
-      JSON.stringify({ error: safeMsg }),
+      JSON.stringify({ error: msg }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

@@ -1,26 +1,10 @@
 import { NextRequest } from "next/server";
-import { getSiliconFlowChatModel } from "@/lib/siliconflow";
+import { streamChatCompletion } from "@/lib/llm-axios";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 120;
 
-/** 包装 fetch：将字符串 body 转为 UTF-8 Buffer，避免 Node/undici 按 ByteString 处理中文导致报错 */
-function patchFetchForUtf8Body(): () => void {
-  const orig = globalThis.fetch;
-  globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-    if (init?.body != null && typeof init.body === "string") {
-      init = { ...init, body: Buffer.from(init.body, "utf8") };
-    }
-    return orig(input, init);
-  };
-  return () => {
-    globalThis.fetch = orig;
-  };
-}
-
 export async function POST(request: NextRequest) {
-  const restoreFetch = patchFetchForUtf8Body();
   try {
     let body: Record<string, unknown>;
     try {
@@ -62,11 +46,6 @@ export async function POST(request: NextRequest) {
     // 按用户目标字数限制：中文约 1～1.5 字/token，maxTokens 收紧以免超出字数太多
     const requestedWords = Math.max(100, parseInt(wordCount, 10) || 3000);
     const maxTokens = Math.min(32768, Math.max(256, Math.ceil((requestedWords * 1.2) + 100)));
-
-    const llm = getSiliconFlowChatModel({
-      temperature: 0.6,
-      maxTokens,
-    });
 
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";
@@ -147,10 +126,13 @@ ${styleHint}
       .filter(Boolean)
       .join("\n\n");
 
-    /** 将 UTF-8 文本编码为流式 chunk，避免 ByteString（仅 0–255）导致的报错 */
     function encodeUtf8Chunk(text: string): Uint8Array {
       return new Uint8Array(Buffer.from(text, "utf8"));
     }
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userContent },
+    ];
     const stream = new ReadableStream({
       async start(controller) {
         const safeEnqueue = (data: Uint8Array) => {
@@ -172,15 +154,7 @@ ${styleHint}
           safeEnqueue(encodeUtf8Chunk(userMsg));
           safeClose();
         };
-        const origFetch = globalThis.fetch;
-        globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-          if (init?.body != null && typeof init.body === "string") {
-            init = { ...init, body: Buffer.from(init.body, "utf8") };
-          }
-          return origFetch(input, init);
-        };
         try {
-          // 流开头始终写一行知识库状态与结果，供前端控制台展示（无论检索成没成功）
           const knowledgeRecordCountMeta = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
           const metaLine =
             JSON.stringify({
@@ -190,37 +164,18 @@ ${styleHint}
               _knowledgeText: knowledgeText || "",
             }) + "\n";
           safeEnqueue(encodeUtf8Chunk(metaLine));
-          const messages = [
-            new SystemMessage(systemPrompt),
-            new HumanMessage(userContent),
-          ];
-          const llmStream = await llm.stream(messages);
-          for await (const chunk of llmStream) {
-            const text =
-              typeof chunk.content === "string"
-                ? chunk.content
-                : String(chunk.content ?? "");
+          for await (const text of streamChatCompletion({
+            messages,
+            temperature: 0.6,
+            maxTokens,
+          })) {
             if (!text) continue;
-            try {
-              if (!safeEnqueue(encodeUtf8Chunk(text))) break;
-            } catch (encodeErr) {
-              const msg = (encodeErr as Error).message || "";
-              if (/ByteString|greater than 255/i.test(msg)) {
-                console.error("[body stream] 流片段编码异常（ByteString/非 Latin-1），已跳过该片段", msg);
-              } else throw encodeErr;
-            }
+            if (!safeEnqueue(encodeUtf8Chunk(text))) break;
           }
           safeClose();
         } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
           console.error("[body stream error]", e);
-          if (/ByteString|greater than 255|24180/i.test(errMsg)) {
-            emitError("\n\n[生成失败：当前环境无法正确处理含中文的知识库或引用内容，请尝试不勾选知识库、缩短引用后再试，或联系管理员。]");
-          } else {
-            emitError("\n\n[生成中断或出错，请重试。]");
-          }
-        } finally {
-          globalThis.fetch = origFetch;
+          emitError("\n\n[生成中断或出错，请重试。]");
         }
       },
     });
@@ -239,14 +194,9 @@ ${styleHint}
     });
   } catch (e) {
     console.error("[body API error]", e);
-    restoreFetch();
     const msg = e instanceof Error ? e.message : "生成正文失败，请稍后重试";
-    const safeMsg =
-      /ByteString|greater than 255|24180/i.test(msg)
-        ? "生成正文失败：当前环境无法正确处理含中文的引用或知识库内容，请尝试不勾选知识库或缩短引用后再试。"
-        : msg;
     return new Response(
-      JSON.stringify({ error: safeMsg }),
+      JSON.stringify({ error: msg }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
