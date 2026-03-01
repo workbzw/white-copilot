@@ -6,15 +6,15 @@
 export LLM_BASE_URL="https://api.siliconflow.cn/v1"
 export LLM_MODEL="deepseek-ai/DeepSeek-V3.2"
 export LLM_API_KEY="sk-mgubibjtdksrcejvbzowwijegdmteujktpdkerysxmvkpdhq"
-# 知识库（可选）：仅在使用者于界面选择知识库时检索
+# 知识库（可选）：与 agent-prd-nginx 同网络，用容器名访问
 export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
-export KNOWLEDGE_BASE_URL="http://host.docker.internal:11014/v1"
-# export KNOWLEDGE_BASE_URL="http://192.168.93.128:11014/v1"
+export KNOWLEDGE_BASE_URL="http://agent-prd-nginx"
 # ========================================
 
 docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030102
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
 docker run -d -p 3080:3080 \
+  --network agent-prd_default \
   -e PORT=3080 \
   -e "LLM_BASE_URL=$LLM_BASE_URL" \
   -e "LLM_MODEL=$LLM_MODEL" \
