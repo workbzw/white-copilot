@@ -4,6 +4,11 @@ const DEFAULT_KNOWLEDGE_BASE_URL = "http://192.168.93.128:11014";
 
 export type KnowledgeDatasetOption = { id: string; name: string };
 
+export type KnowledgeConfigStatus = {
+  apiKeyConfigured: boolean;
+  baseUrl: string;
+};
+
 type RemoteDataset = {
   id?: string;
   name?: string;
@@ -19,15 +24,22 @@ type RemoteResponse = {
   limit?: number;
 };
 
+function getConfigStatus(): KnowledgeConfigStatus {
+  const apiKey = process.env.KNOWLEDGE_API_KEY?.trim();
+  let baseUrl = (process.env.KNOWLEDGE_BASE_URL ?? DEFAULT_KNOWLEDGE_BASE_URL).trim().replace(/\/$/, "");
+  if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
+  return { apiKeyConfigured: !!apiKey, baseUrl: baseUrl || "" };
+}
+
 /**
  * 从知识库服务拉取数据集列表，供前端「本对话使用的知识库」选择。
- * 调用 GET {KNOWLEDGE_BASE_URL}/v1/datasets?page=1&limit=100，使用 KNOWLEDGE_API_KEY 鉴权。
- * 若未配置或请求失败，则回退到环境变量 KNOWLEDGE_DATASETS_OPTIONS（静态 JSON）。
+ * 返回 { options, configStatus }，configStatus 用于在「暂无可选知识库」时展示配置情况（不暴露 API Key 明文）。
  */
 export async function GET() {
   const apiKey = process.env.KNOWLEDGE_API_KEY?.trim();
   let baseUrl = (process.env.KNOWLEDGE_BASE_URL ?? DEFAULT_KNOWLEDGE_BASE_URL).trim().replace(/\/$/, "");
   if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
+  const configStatus = getConfigStatus();
 
   if (apiKey) {
     try {
@@ -40,7 +52,7 @@ export async function GET() {
       });
       if (!res.ok) {
         console.warn("[knowledge-datasets] API 返回", res.status);
-        return fallbackOptions();
+        return NextResponse.json({ options: fallbackOptionsList(), configStatus });
       }
       const json = (await res.json()) as RemoteResponse;
       const list = json.data ?? [];
@@ -50,27 +62,26 @@ export async function GET() {
           id: (item.id as string).trim(),
           name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : (item.id as string).trim(),
         }));
-      return NextResponse.json(options);
+      return NextResponse.json({ options, configStatus });
     } catch (e) {
       console.warn("[knowledge-datasets] 知识库服务不可用，已回退:", (e as Error).message);
-      return fallbackOptions();
+      return NextResponse.json({ options: fallbackOptionsList(), configStatus });
     }
   }
 
-  return fallbackOptions();
+  return NextResponse.json({ options: fallbackOptionsList(), configStatus });
 }
 
-function fallbackOptions(): NextResponse<KnowledgeDatasetOption[]> {
+function fallbackOptionsList(): KnowledgeDatasetOption[] {
   const raw = process.env.KNOWLEDGE_DATASETS_OPTIONS?.trim();
-  if (!raw) return NextResponse.json([]);
+  if (!raw) return [];
   try {
     const list = JSON.parse(raw) as unknown;
-    if (!Array.isArray(list)) return NextResponse.json([]);
-    const options = (list as KnowledgeDatasetOption[]).filter(
+    if (!Array.isArray(list)) return [];
+    return (list as KnowledgeDatasetOption[]).filter(
       (item) => item && typeof item.id === "string" && typeof item.name === "string"
     );
-    return NextResponse.json(options);
   } catch {
-    return NextResponse.json([]);
+    return [];
   }
 }

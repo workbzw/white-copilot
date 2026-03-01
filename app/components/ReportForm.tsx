@@ -59,6 +59,10 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("full");
   const [referenceText, setReferenceText] = useState("");
   const [knowledgeDatasetOptions, setKnowledgeDatasetOptions] = useState<{ id: string; name: string }[]>([]);
+  const [knowledgeConfigStatus, setKnowledgeConfigStatus] = useState<{
+    apiKeyConfigured: boolean;
+    baseUrl: string;
+  } | null>(null);
   const [selectedKnowledgeDatasetIds, setSelectedKnowledgeDatasetIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -181,12 +185,23 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     });
   }, []);
 
-  /** 可选知识库列表（用于本对话选择不同知识库） */
+  /** 可选知识库列表与配置状态（用于本对话选择不同知识库） */
   useEffect(() => {
     fetch("/api/knowledge-datasets")
       .then((r) => r.json())
-      .then((list) => setKnowledgeDatasetOptions(Array.isArray(list) ? list : []))
-      .catch(() => setKnowledgeDatasetOptions([]));
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setKnowledgeDatasetOptions(data);
+          setKnowledgeConfigStatus(null);
+        } else {
+          setKnowledgeDatasetOptions(data?.options ?? []);
+          setKnowledgeConfigStatus(data?.configStatus ?? null);
+        }
+      })
+      .catch(() => {
+        setKnowledgeDatasetOptions([]);
+        setKnowledgeConfigStatus(null);
+      });
   }, []);
 
   /** 编辑已有文档：用 initialData 填充并进入正文/优化步骤（须在 addToContentHistory 之后） */
@@ -802,9 +817,16 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     </p>
                   </>
                 ) : (
-                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
-                    暂无可选知识库。请确认已配置 KNOWLEDGE_API_KEY、KNOWLEDGE_BASE_URL，且知识库服务可访问。
-                  </p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
+                    <p className="mb-1.5">暂无可选知识库。</p>
+                    {knowledgeConfigStatus && (
+                      <p className="font-mono text-xs text-gray-600">
+                        KNOWLEDGE_API_KEY: {knowledgeConfigStatus.apiKeyConfigured ? "已配置" : "未配置"}
+                        {" · "}
+                        KNOWLEDGE_BASE_URL: {knowledgeConfigStatus.baseUrl || "未配置"}
+                      </p>
+                    )}
+                  </div>
                 )}
               </section>
               </div>
@@ -896,9 +918,16 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     <p className="mt-1 text-xs text-gray-400">可多选；不选则本对话不使用知识库</p>
                   </>
                 ) : (
-                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                    暂无可选知识库
-                  </p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    <p className="mb-1">暂无可选知识库。</p>
+                    {knowledgeConfigStatus && (
+                      <p className="font-mono text-xs text-gray-600">
+                        API Key: {knowledgeConfigStatus.apiKeyConfigured ? "已配置" : "未配置"}
+                        {" · "}
+                        BASE_URL: {knowledgeConfigStatus.baseUrl || "未配置"}
+                      </p>
+                    )}
+                  </div>
                 )}
               </section>
 
