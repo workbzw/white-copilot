@@ -113,15 +113,15 @@ ${styleHint}
 
     const referenceBlocks: string[] = [];
     if (hasLocalRef) {
-      referenceBlocks.push(`【重点引用资料（本地文章，本节须重点引用）】\n\n${referenceText}`);
+      referenceBlocks.push(`【重点引用资料（本地文章，本节须重点引用）】\n\n${referenceText.normalize("NFC")}`);
     }
     if (hasKnowledge) {
-      referenceBlocks.push(`【知识库检索（可适当引用补充）】\n\n${knowledgeText}`);
+      referenceBlocks.push(`【知识库检索（可适当引用补充）】\n\n${knowledgeText.normalize("NFC")}`);
     }
 
     const outlineContext = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const userContent = [
-      `报告主题：${topic}`,
+      `报告主题：${topic.normalize("NFC")}`,
       `字数要求：本节至少 ${wordCountPerSection} 字，宁多勿少，写满再结束`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
@@ -137,7 +137,10 @@ ${styleHint}
       new HumanMessage(userContent),
     ];
 
-    const encoder = new TextEncoder();
+    /** 将 UTF-8 文本编码为流式 chunk，避免 ByteString（仅 0–255）导致的报错 */
+    function encodeUtf8Chunk(text: string): Uint8Array {
+      return new Uint8Array(Buffer.from(text, "utf8"));
+    }
     const stream = new ReadableStream({
       async start(controller) {
         const safeEnqueue = (data: Uint8Array) => {
@@ -162,12 +165,24 @@ ${styleHint}
               typeof chunk.content === "string"
                 ? chunk.content
                 : String(chunk.content ?? "");
-            if (text && !safeEnqueue(encoder.encode(text))) break;
+            if (!text) continue;
+            try {
+              if (!safeEnqueue(encodeUtf8Chunk(text))) break;
+            } catch (encodeErr) {
+              const msg = (encodeErr as Error).message || "";
+              if (/ByteString|greater than 255/i.test(msg)) {
+                console.error("[body-section stream] 流片段编码异常（ByteString/非 Latin-1），已跳过该片段", msg);
+              } else throw encodeErr;
+            }
           }
           safeClose();
         } catch (e) {
           console.error("[body-section stream error]", e);
-          safeEnqueue(encoder.encode("\n[本节生成中断或出错]"));
+          try {
+            safeEnqueue(encodeUtf8Chunk("\n[本节生成中断或出错]"));
+          } catch {
+            // 忽略
+          }
           safeClose();
         }
       },

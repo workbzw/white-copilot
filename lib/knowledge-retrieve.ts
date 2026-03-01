@@ -85,13 +85,15 @@ export async function retrieveFromKnowledge(
     };
 
     const url = `${baseUrl}/v1/datasets/${encodeURIComponent(datasetId)}/retrieve`;
+    const bodyStr = JSON.stringify(payload);
+    const bodyBytes = Buffer.from(bodyStr, "utf8");
     const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
       },
-      body: JSON.stringify(payload),
+      body: bodyBytes,
     });
 
     if (!res.ok) {
@@ -100,7 +102,9 @@ export async function retrieveFromKnowledge(
       continue;
     }
 
-    const data = (await res.json()) as {
+    const rawBytes = await res.arrayBuffer();
+    const rawStr = new TextDecoder("utf-8").decode(rawBytes);
+    const data = JSON.parse(rawStr) as {
       query?: { content?: string };
       records?: Array<{
         segment?: { content?: string; document?: { name?: string }; [key: string]: unknown };
