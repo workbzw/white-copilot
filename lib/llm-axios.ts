@@ -27,8 +27,11 @@ function getApiKey(): string {
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
+const CHAT_PATH = "/v1/chat/completions";
+
 function createClient(): AxiosInstance {
-  const baseURL = getBaseUrl().replace(/\/$/, "");
+  let baseURL = getBaseUrl().replace(/\/$/, "");
+  if (baseURL.endsWith("/v1")) baseURL = baseURL.slice(0, -3);
   return axios.create({
     baseURL,
     headers: {
@@ -50,7 +53,7 @@ export async function chatCompletion(params: {
   const client = createClient();
   const res = await client.post<{
     choices?: Array<{ message?: { content?: string }; content?: string }>;
-  }>("/v1/chat/completions", {
+  }>(CHAT_PATH, {
     model: params.model?.trim() || getModel(),
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
@@ -73,7 +76,7 @@ export async function* streamChatCompletion(params: {
 }): AsyncGenerator<string, void, unknown> {
   const client = createClient();
   const res = await client.post(
-    "/v1/chat/completions",
+    CHAT_PATH,
     {
       model: params.model?.trim() || getModel(),
       messages: params.messages,
