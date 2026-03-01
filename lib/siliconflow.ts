@@ -1,3 +1,4 @@
+import "./utf8-fetch-patch";
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
