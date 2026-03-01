@@ -775,32 +775,38 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 </p>
               </section>
 
-              {knowledgeDatasetOptions.length > 0 && (
-                <section className="mb-6">
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    本对话使用的知识库 <span className="text-gray-400">(可选)</span>
-                  </label>
-                  <select
-                    multiple
-                    value={selectedKnowledgeDatasetIds}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, (o) => o.value);
-                      setSelectedKnowledgeDatasetIds(selected);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
-                    size={Math.min(4, knowledgeDatasetOptions.length)}
-                  >
-                    {knowledgeDatasetOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1.5 text-xs text-gray-400">
-                    不选则使用系统默认；可多选，生成正文时从所选知识库检索
+              <section className="mb-6">
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  本对话使用的知识库 <span className="text-gray-400">(可选)</span>
+                </label>
+                {knowledgeDatasetOptions.length > 0 ? (
+                  <>
+                    <select
+                      multiple
+                      value={selectedKnowledgeDatasetIds}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, (o) => o.value);
+                        setSelectedKnowledgeDatasetIds(selected);
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                      size={Math.min(4, knowledgeDatasetOptions.length)}
+                    >
+                      {knowledgeDatasetOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-gray-400">
+                      可多选，生成正文时从所选知识库检索；不选则本对话不使用知识库
+                    </p>
+                  </>
+                ) : (
+                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
+                    暂无可选知识库。请确认已配置 KNOWLEDGE_API_KEY、KNOWLEDGE_BASE_URL，且知识库服务可访问。
                   </p>
-                </section>
-              )}
+                )}
+              </section>
               </div>
               <div className="shrink-0 border-t border-gray-100 p-6 pt-4">
                 <button
@@ -865,30 +871,36 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 </button>
               </div>
 
-              {knowledgeDatasetOptions.length > 0 && (
-                <section className="mb-4">
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    本对话使用的知识库
-                  </label>
-                  <select
-                    multiple
-                    value={selectedKnowledgeDatasetIds}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, (o) => o.value);
-                      setSelectedKnowledgeDatasetIds(selected);
-                    }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
-                    size={Math.min(3, knowledgeDatasetOptions.length)}
-                  >
-                    {knowledgeDatasetOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-400">不选=系统默认；可多选</p>
-                </section>
-              )}
+              <section className="mb-4">
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  本对话使用的知识库
+                </label>
+                {knowledgeDatasetOptions.length > 0 ? (
+                  <>
+                    <select
+                      multiple
+                      value={selectedKnowledgeDatasetIds}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, (o) => o.value);
+                        setSelectedKnowledgeDatasetIds(selected);
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                      size={Math.min(3, knowledgeDatasetOptions.length)}
+                    >
+                      {knowledgeDatasetOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-400">可多选；不选则本对话不使用知识库</p>
+                  </>
+                ) : (
+                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    暂无可选知识库
+                  </p>
+                )}
+              </section>
 
               <section className="mb-4">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
