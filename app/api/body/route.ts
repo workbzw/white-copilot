@@ -1,26 +1,10 @@
 import { NextRequest } from "next/server";
-import { getSiliconFlowChatModel } from "@/lib/siliconflow";
+import { streamChat } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 120;
 
-/** 包装 fetch：将字符串 body 转为 UTF-8 Buffer，避免 Node/undici 按 ByteString 处理中文导致报错 */
-function patchFetchForUtf8Body(): () => void {
-  const orig = globalThis.fetch;
-  globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-    if (init?.body != null && typeof init.body === "string") {
-      init = { ...init, body: Buffer.from(init.body, "utf8") };
-    }
-    return orig(input, init);
-  };
-  return () => {
-    globalThis.fetch = orig;
-  };
-}
-
 export async function POST(request: NextRequest) {
-  const restoreFetch = patchFetchForUtf8Body();
   try {
     let body: Record<string, unknown>;
     try {
@@ -62,11 +46,6 @@ export async function POST(request: NextRequest) {
     // 按用户目标字数：预留足够 token（中文约 1～2 字/token），避免因 token 上限被截断
     const requestedWords = Math.max(100, parseInt(wordCount, 10) || 3000);
     const maxTokens = Math.min(32768, Math.max(256, Math.ceil(requestedWords * 2)));
-
-    const llm = getSiliconFlowChatModel({
-      temperature: 0.6,
-      maxTokens,
-    });
 
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";
@@ -161,33 +140,15 @@ ${styleHint}
           safeEnqueue(encodeUtf8Chunk(userMsg));
           safeClose();
         };
-        const origFetch = globalThis.fetch;
-        globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-          if (init?.body != null && typeof init.body === "string") {
-            init = { ...init, body: Buffer.from(init.body, "utf8") };
-          }
-          return origFetch(input, init);
-        };
         try {
           const messages = [
-            new SystemMessage(systemPrompt),
-            new HumanMessage(userContent),
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
           ];
-          const llmStream = await llm.stream(messages);
-          for await (const chunk of llmStream) {
-            const text =
-              typeof chunk.content === "string"
-                ? chunk.content
-                : String(chunk.content ?? "");
+          const llmStream = streamChat({ messages, temperature: 0.6, maxTokens });
+          for await (const text of llmStream) {
             if (!text) continue;
-            try {
-              if (!safeEnqueue(encodeUtf8Chunk(text))) break;
-            } catch (encodeErr) {
-              const msg = (encodeErr as Error).message || "";
-              if (/ByteString|greater than 255/i.test(msg)) {
-                console.error("[body stream] 流片段编码异常（ByteString/非 Latin-1），已跳过该片段", msg);
-              } else throw encodeErr;
-            }
+            if (!safeEnqueue(encodeUtf8Chunk(text))) break;
           }
           safeClose();
         } catch (e) {
@@ -198,8 +159,6 @@ ${styleHint}
           } else {
             emitError("\n\n[生成中断或出错，请重试。]");
           }
-        } finally {
-          globalThis.fetch = origFetch;
         }
       },
     });
@@ -218,7 +177,6 @@ ${styleHint}
     });
   } catch (e) {
     console.error("[body API error]", e);
-    restoreFetch();
     const msg = e instanceof Error ? e.message : "生成正文失败，请稍后重试";
     const safeMsg =
       /ByteString|greater than 255|24180/i.test(msg)

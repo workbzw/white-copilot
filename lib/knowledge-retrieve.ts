@@ -98,7 +98,7 @@ export async function retrieveFromKnowledge(
 
     if (!res.ok) {
       const text = await res.text();
-      console.error("[knowledge-retrieve] API 请求失败", res.status, url, text);
+      console.error("[knowledge-retrieve] API 请求失败", res.status, url, text.slice(0, 500));
       continue;
     }
 
@@ -121,6 +121,14 @@ export async function retrieveFromKnowledge(
       data.chunks ??
       data.data ??
       (Array.isArray(data) ? data : []);
+
+    if (list.length > 0 && allChunks.length === 0 && datasetIds.indexOf(datasetId) === 0) {
+      const first = list[0] as Record<string, unknown>;
+      console.log("[knowledge-retrieve] 响应有 records 但未解析到 content，首条 keys:", Object.keys(first || {}));
+      if (first?.segment && typeof first.segment === "object") {
+        console.log("[knowledge-retrieve] 首条 segment keys:", Object.keys((first.segment as Record<string, unknown>) || {}));
+      }
+    }
 
     for (const item of list) {
       if (!item || typeof item !== "object") continue;

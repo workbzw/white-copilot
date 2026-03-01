@@ -10,6 +10,7 @@
   "dependencies": {
     "@langchain/core": "^1.1.19",
     "@langchain/openai": "^1.2.5",
+    "axios": "^1.13.6",
     "docx": "^9.5.1",
     "html-to-docx": "^1.8.0",
     "jszip": "^3.10.1",

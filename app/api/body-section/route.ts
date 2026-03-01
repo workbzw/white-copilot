@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSiliconFlowChatModel } from "@/lib/siliconflow";
+import { streamChat } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 60;
 
@@ -87,11 +86,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const llm = getSiliconFlowChatModel({
-      temperature: 0.6,
-      maxTokens,
-    });
-
     const styleHint =
       styleMode === "standard"
         ? "请严格按标准公文格式与用语撰写，层次清晰、用语规范。"
@@ -157,33 +151,15 @@ ${styleHint}
           safeEnqueue(encodeUtf8Chunk(userMsg));
           safeClose();
         };
-        const origFetch = globalThis.fetch;
-        globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-          if (init?.body != null && typeof init.body === "string") {
-            init = { ...init, body: Buffer.from(init.body, "utf8") };
-          }
-          return origFetch(input, init);
-        };
         try {
           const messages = [
-            new SystemMessage(systemPrompt),
-            new HumanMessage(userContent),
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userContent },
           ];
-          const llmStream = await llm.stream(messages);
-          for await (const chunk of llmStream) {
-            const text =
-              typeof chunk.content === "string"
-                ? chunk.content
-                : String(chunk.content ?? "");
+          const llmStream = streamChat({ messages, temperature: 0.6, maxTokens });
+          for await (const text of llmStream) {
             if (!text) continue;
-            try {
-              if (!safeEnqueue(encodeUtf8Chunk(text))) break;
-            } catch (encodeErr) {
-              const msg = (encodeErr as Error).message || "";
-              if (/ByteString|greater than 255/i.test(msg)) {
-                console.error("[body-section stream] 流片段编码异常（ByteString/非 Latin-1），已跳过该片段", msg);
-              } else throw encodeErr;
-            }
+            if (!safeEnqueue(encodeUtf8Chunk(text))) break;
           }
           safeClose();
         } catch (e) {
@@ -194,8 +170,6 @@ ${styleHint}
           } else {
             emitError("\n[本节生成中断或出错]");
           }
-        } finally {
-          globalThis.fetch = origFetch;
         }
       },
     });
