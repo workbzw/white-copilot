@@ -11,7 +11,7 @@ export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
 export KNOWLEDGE_BASE_URL="http://192.168.93.128:11014/v1"
 # ========================================
 
-docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030101
+docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030102
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
 docker run -d -p 3080:3080 \
   -e PORT=3080 \
@@ -22,6 +22,6 @@ docker run -d -p 3080:3080 \
   -e "KNOWLEDGE_BASE_URL=$KNOWLEDGE_BASE_URL" \
   -v "$(pwd)/data:/app/data" \
   --name write-copilot \
-  ccr.ccs.tencentyun.com/workbzw/write-copilot:030101
+  ccr.ccs.tencentyun.com/workbzw/write-copilot:030102
 
 echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3080"
