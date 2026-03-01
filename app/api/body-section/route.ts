@@ -132,11 +132,6 @@ ${styleHint}
       .filter(Boolean)
       .join("\n\n");
 
-    const messages = [
-      new SystemMessage(systemPrompt),
-      new HumanMessage(userContent),
-    ];
-
     /** 将 UTF-8 文本编码为流式 chunk，避免 ByteString（仅 0–255）导致的报错 */
     function encodeUtf8Chunk(text: string): Uint8Array {
       return new Uint8Array(Buffer.from(text, "utf8"));
@@ -158,7 +153,22 @@ ${styleHint}
             // ignore
           }
         };
+        const emitError = (userMsg: string) => {
+          safeEnqueue(encodeUtf8Chunk(userMsg));
+          safeClose();
+        };
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+          if (init?.body != null && typeof init.body === "string") {
+            init = { ...init, body: Buffer.from(init.body, "utf8") };
+          }
+          return origFetch(input, init);
+        };
         try {
+          const messages = [
+            new SystemMessage(systemPrompt),
+            new HumanMessage(userContent),
+          ];
           const llmStream = await llm.stream(messages);
           for await (const chunk of llmStream) {
             const text =
@@ -177,13 +187,15 @@ ${styleHint}
           }
           safeClose();
         } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
           console.error("[body-section stream error]", e);
-          try {
-            safeEnqueue(encodeUtf8Chunk("\n[本节生成中断或出错]"));
-          } catch {
-            // 忽略
+          if (/ByteString|greater than 255|24180/i.test(errMsg)) {
+            emitError("\n[本节生成失败：当前环境无法正确处理含中文的引用或知识库内容，请尝试不勾选知识库或缩短引用后再试。]");
+          } else {
+            emitError("\n[本节生成中断或出错]");
           }
-          safeClose();
+        } finally {
+          globalThis.fetch = origFetch;
         }
       },
     });
@@ -202,10 +214,13 @@ ${styleHint}
     });
   } catch (e) {
     console.error("[body-section API error]", e);
+    const msg = e instanceof Error ? e.message : "本节生成失败，请重试";
+    const safeMsg =
+      /ByteString|greater than 255|24180/i.test(msg)
+        ? "本节生成失败：当前环境无法正确处理含中文的引用或知识库内容，请尝试不勾选知识库或缩短引用后再试。"
+        : msg;
     return new Response(
-      JSON.stringify({
-        error: e instanceof Error ? e.message : "本节生成失败，请重试",
-      }),
+      JSON.stringify({ error: safeMsg }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
