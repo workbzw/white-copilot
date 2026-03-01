@@ -8,7 +8,7 @@ export LLM_MODEL="deepseek-ai/DeepSeek-V3.2"
 export LLM_API_KEY="sk-mgubibjtdksrcejvbzowwijegdmteujktpdkerysxmvkpdhq"
 # 知识库（可选）：仅在使用者于界面选择知识库时检索
 export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
-export KNOWLEDGE_BASE_URL="http://127.0.0.1:11014/v1"
+export KNOWLEDGE_BASE_URL="http://host.docker.internal:11014/v1"
 # export KNOWLEDGE_BASE_URL="http://192.168.93.128:11014/v1"
 # ========================================
 

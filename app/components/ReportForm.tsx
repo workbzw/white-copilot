@@ -62,6 +62,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [knowledgeConfigStatus, setKnowledgeConfigStatus] = useState<{
     apiKeyConfigured: boolean;
     baseUrl: string;
+    requestInfo?: { method: string; url: string; headers: { name: string; value: string }[] };
   } | null>(null);
   const [selectedKnowledgeDatasetIds, setSelectedKnowledgeDatasetIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -817,15 +818,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     </p>
                   </>
                 ) : (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
-                    <p className="mb-1.5">暂无可选知识库。</p>
-                    {knowledgeConfigStatus && (
-                      <p className="font-mono text-xs text-gray-600">
-                        KNOWLEDGE_API_KEY: {knowledgeConfigStatus.apiKeyConfigured ? "已配置" : "未配置"}
-                        {" · "}
-                        KNOWLEDGE_BASE_URL: {knowledgeConfigStatus.baseUrl || "未配置"}
-                      </p>
-                    )}
+                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
+                    暂无可选知识库
+                  </p>
+                )}
+                {knowledgeConfigStatus?.requestInfo && (
+                  <div className="mt-2 rounded border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-700">
+                    <p className="mb-1 font-medium text-gray-500">当前列表请求</p>
+                    <p className="break-all">请求: {knowledgeConfigStatus.requestInfo.method} {knowledgeConfigStatus.requestInfo.url || "(未配置)"}</p>
+                    <p className="mt-1">请求头: {knowledgeConfigStatus.requestInfo.headers.map((h) => `${h.name}: ${h.value}`).join("；")}</p>
                   </div>
                 )}
               </section>
@@ -918,15 +919,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     <p className="mt-1 text-xs text-gray-400">可多选；不选则本对话不使用知识库</p>
                   </>
                 ) : (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                    <p className="mb-1">暂无可选知识库。</p>
-                    {knowledgeConfigStatus && (
-                      <p className="font-mono text-xs text-gray-600">
-                        API Key: {knowledgeConfigStatus.apiKeyConfigured ? "已配置" : "未配置"}
-                        {" · "}
-                        BASE_URL: {knowledgeConfigStatus.baseUrl || "未配置"}
-                      </p>
-                    )}
+                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    暂无可选知识库
+                  </p>
+                )}
+                {knowledgeConfigStatus?.requestInfo && (
+                  <div className="mt-2 rounded border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-700">
+                    <p className="mb-1 font-medium text-gray-500">当前列表请求</p>
+                    <p className="break-all">请求: {knowledgeConfigStatus.requestInfo.method} {knowledgeConfigStatus.requestInfo.url || "(未配置)"}</p>
+                    <p className="mt-1">请求头: {knowledgeConfigStatus.requestInfo.headers.map((h) => `${h.name}: ${h.value}`).join("；")}</p>
                   </div>
                 )}
               </section>

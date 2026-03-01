@@ -7,6 +7,12 @@ export type KnowledgeDatasetOption = { id: string; name: string };
 export type KnowledgeConfigStatus = {
   apiKeyConfigured: boolean;
   baseUrl: string;
+  /** 完整请求信息，用于调试展示（不包含 API Key 明文） */
+  requestInfo: {
+    method: string;
+    url: string;
+    headers: { name: string; value: string }[];
+  };
 };
 
 type RemoteDataset = {
@@ -28,7 +34,16 @@ function getConfigStatus(): KnowledgeConfigStatus {
   const apiKey = process.env.KNOWLEDGE_API_KEY?.trim();
   let baseUrl = (process.env.KNOWLEDGE_BASE_URL ?? DEFAULT_KNOWLEDGE_BASE_URL).trim().replace(/\/$/, "");
   if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
-  return { apiKeyConfigured: !!apiKey, baseUrl: baseUrl || "" };
+  const requestUrl = baseUrl ? `${baseUrl}/v1/datasets?page=1&limit=100` : "";
+  const requestInfo = {
+    method: "GET",
+    url: requestUrl,
+    headers: [
+      { name: "Authorization", value: apiKey ? "Bearer ***" : "(未配置)" },
+      { name: "Content-Type", value: "application/json" },
+    ],
+  };
+  return { apiKeyConfigured: !!apiKey, baseUrl: baseUrl || "", requestInfo };
 }
 
 /**
