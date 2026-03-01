@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import { streamChatCompletion } from "@/lib/llm-axios";
+import { getSiliconFlowChatModel } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 120;
 
@@ -116,10 +117,10 @@ ${styleHint}
     function encodeUtf8Chunk(text: string): Uint8Array {
       return new Uint8Array(Buffer.from(text, "utf8"));
     }
-    const messages = [
-      { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: userContent },
-    ];
+    const llm = getSiliconFlowChatModel({
+      temperature: 0.6,
+      maxTokens,
+    });
     const stream = new ReadableStream({
       async start(controller) {
         const safeEnqueue = (data: Uint8Array) => {
@@ -142,11 +143,16 @@ ${styleHint}
           safeClose();
         };
         try {
-          for await (const text of streamChatCompletion({
-            messages,
-            temperature: 0.6,
-            maxTokens,
-          })) {
+          const messages = [
+            new SystemMessage(systemPrompt),
+            new HumanMessage(userContent),
+          ];
+          const llmStream = await llm.stream(messages);
+          for await (const chunk of llmStream) {
+            const text =
+              typeof chunk.content === "string"
+                ? chunk.content
+                : String(chunk.content ?? "");
             if (!text) continue;
             if (!safeEnqueue(encodeUtf8Chunk(text))) break;
           }

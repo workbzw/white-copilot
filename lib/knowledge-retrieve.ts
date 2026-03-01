@@ -156,6 +156,7 @@ export async function retrieveFromKnowledge(
     console.log("[knowledge-retrieve] 成功", {
       query: query.trim().slice(0, 50),
       knowledgeBases: datasetIds.length,
+      datasetIds,
       recordCount: allChunks.length,
       totalChars: result.length,
     });
@@ -163,6 +164,7 @@ export async function retrieveFromKnowledge(
     console.log("[knowledge-retrieve] 无命中", {
       query: query.trim().slice(0, 50),
       knowledgeBases: datasetIds.length,
+      datasetIds,
       hint: "可能检索接口报错或返回格式不符，请查看上方是否有 API 请求失败日志",
     });
   }
