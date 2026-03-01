@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 按用户目标字数控制：中文约 1～1.5 字/token，尊重用户填写的小字数
+    // 按用户目标字数：预留足够 token（中文约 1～2 字/token），避免因 token 上限被截断
     const requestedWords = Math.max(100, parseInt(wordCount, 10) || 3000);
-    const maxTokens = Math.min(32768, Math.max(256, Math.ceil(requestedWords * 1.5)));
+    const maxTokens = Math.min(32768, Math.max(256, Math.ceil(requestedWords * 2)));
 
     const llm = getSiliconFlowChatModel({
       temperature: 0.6,
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 ${styleHint}
 要求：
 1. 按给定大纲逐节撰写，每节标题使用与大纲一致的格式（如一、二、三或对应标题）。
-2. 总字数必须严格控制在 ${wordCount} 字，不得明显超出或不足。请按大纲合理分配到各节，写满即止。
+2. 总字数必须达到至少 ${wordCount} 字（可略多不可少），按大纲合理分配到各节，每节写足字数，全文写满 ${wordCount} 字后再结束。
 3. 只输出报告正文，不要输出“好的”“以下是”等前缀。
 4. 使用中文，内容专业、数据与逻辑可信。
 5. ${refRule}`;
@@ -97,7 +97,7 @@ ${styleHint}
 
     const userContent = [
       `报告主题：${topic}`,
-      `字数要求：全文严格控制在 ${wordCount} 字（不得超出）`,
+      `字数要求：全文至少 ${wordCount} 字，宁多勿少，写满再结束`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
       referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
