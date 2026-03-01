@@ -312,50 +312,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           return;
         }
         let buffer = "";
-        let contentStarted = false;
         let text = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          if (!contentStarted) {
-            const idx = buffer.indexOf("\n");
-            if (idx >= 0) {
-              const line = buffer.slice(0, idx);
-              const rest = buffer.slice(idx + 1);
-              try {
-                const meta = JSON.parse(line) as {
-                  _knowledgeStatus?: string;
-                  _knowledgeQuery?: string;
-                  _knowledgeRecordCount?: number;
-                  _knowledgeText?: string;
-                };
-                const status = meta._knowledgeStatus ?? "no_dataset";
-                console.log("[知识库检索] 全文生成", {
-                  检索方式: "报告主题",
-                  检索关键词: meta._knowledgeQuery || "—",
-                  知识库状态: knowledgeStatusLabel[status] ?? status,
-                  是否检索到内容: status === "used",
-                  命中条数: Number(meta._knowledgeRecordCount) || 0,
-                });
-                if (meta._knowledgeText) {
-                  console.log("[知识库检索结果] 全文注入内容：", meta._knowledgeText);
-                } else if (status !== "no_dataset" && status !== "no_api_key") {
-                  console.log("[知识库检索结果] 全文注入内容：", "(无)");
-                }
-              } catch {
-                /* 首行非 JSON，整段当正文 */
-              }
-              buffer = rest;
-              contentStarted = true;
-            }
-          }
-          if (contentStarted) {
-            text += buffer;
-            buffer = "";
-            setBodyContent(text);
-            setBodyProgress((p) => Math.min(99, p + 1));
-          }
+          text += buffer;
+          buffer = "";
+          setBodyContent(text);
+          setBodyProgress((p) => Math.min(99, p + 1));
         }
         if (buffer) text += buffer;
         setBodyContent(text);
@@ -403,61 +368,19 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         const data = await res.json().catch(() => ({}));
         throw new Error((data.error as string) || `第 ${index + 1} 节生成失败`);
       }
-      const knowledgeStatusLabel: Record<string, string> = {
-        used: "已使用",
-        no_api_key: "未配置 API Key",
-        no_dataset: "未选择知识库",
-        retrieval_failed: "检索失败",
-        no_results: "检索无结果",
-      };
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error("无法读取响应流");
       let buffer = "";
-      let contentStarted = false;
       let sectionText = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        if (!contentStarted) {
-          const idx = buffer.indexOf("\n");
-          if (idx >= 0) {
-            const line = buffer.slice(0, idx);
-            const rest = buffer.slice(idx + 1);
-            try {
-              const meta = JSON.parse(line) as {
-                _knowledgeStatus?: string;
-                _knowledgeQuery?: string;
-                _knowledgeRecordCount?: number;
-                _knowledgeText?: string;
-              };
-              const status = meta._knowledgeStatus ?? "no_dataset";
-              console.log(`[知识库检索] 第 ${index + 1} 节`, {
-                检索方式: "报告主题 + 本节标题",
-                检索关键词: meta._knowledgeQuery || "—",
-                知识库状态: knowledgeStatusLabel[status] ?? status,
-                是否检索到内容: status === "used",
-                命中条数: Number(meta._knowledgeRecordCount) || 0,
-              });
-              if (meta._knowledgeText) {
-                console.log("[知识库检索结果] 本节注入内容：", meta._knowledgeText);
-              } else if (status !== "no_dataset" && status !== "no_api_key") {
-                console.log("[知识库检索结果] 本节注入内容：", "(无)");
-              }
-            } catch {
-              /* 首行非 JSON，整段当正文 */
-            }
-            buffer = rest;
-            contentStarted = true;
-          }
-        }
-        if (contentStarted) {
-          sectionText += buffer;
-          buffer = "";
-          bodySectionsRef.current[index] = sectionText;
-          setBodySections([...bodySectionsRef.current]);
-        }
+        sectionText += buffer;
+        buffer = "";
+        bodySectionsRef.current[index] = sectionText;
+        setBodySections([...bodySectionsRef.current]);
       }
       if (buffer) {
         sectionText += buffer;

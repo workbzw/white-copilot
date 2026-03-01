@@ -50,14 +50,12 @@ export async function POST(request: NextRequest) {
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";
     let knowledgeStatus: KnowledgeStatus = "no_dataset";
-    let knowledgeQuerySent = "";
 
     if (!process.env.KNOWLEDGE_API_KEY?.trim()) {
       knowledgeStatus = "no_api_key";
     } else if (knowledgeDatasetIds.length === 0) {
       knowledgeStatus = "no_dataset";
     } else {
-      knowledgeQuerySent = topic;
       try {
         knowledgeText = await retrieveFromKnowledge(topic, {
           topK: 5,
@@ -75,17 +73,6 @@ export async function POST(request: NextRequest) {
     }
     const hasLocalRef = !!referenceText?.trim();
     const hasKnowledge = knowledgeStatus === "used";
-
-    if (knowledgeQuerySent) {
-      console.log("[知识库检索] 全文", {
-        检索关键词: knowledgeQuerySent,
-        状态: knowledgeStatus,
-        命中条数: hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0,
-      });
-      if (knowledgeText) {
-        console.log("[知识库检索结果] 全文注入内容：", knowledgeText);
-      }
-    }
 
     const outlineText = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const styleHint =
@@ -155,15 +142,6 @@ ${styleHint}
           safeClose();
         };
         try {
-          const knowledgeRecordCountMeta = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
-          const metaLine =
-            JSON.stringify({
-              _knowledgeStatus: knowledgeStatus,
-              _knowledgeQuery: knowledgeQuerySent,
-              _knowledgeRecordCount: knowledgeRecordCountMeta,
-              _knowledgeText: knowledgeText || "",
-            }) + "\n";
-          safeEnqueue(encodeUtf8Chunk(metaLine));
           for await (const text of streamChatCompletion({
             messages,
             temperature: 0.6,
@@ -180,16 +158,11 @@ ${styleHint}
       },
     });
 
-    const knowledgeRecordCount = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "X-Knowledge-Used": hasKnowledge ? "true" : "false",
-        "X-Knowledge-Status": knowledgeStatus,
-        "X-Knowledge-Query": knowledgeQuerySent,
-        "X-Knowledge-Record-Count": String(knowledgeRecordCount),
       },
     });
   } catch (e) {

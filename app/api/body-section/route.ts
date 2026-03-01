@@ -53,14 +53,12 @@ export async function POST(request: NextRequest) {
     const sectionQuery = `${topic} ${sectionTitle}`.trim();
     let knowledgeText = "";
     let knowledgeStatus: KnowledgeStatus = "no_dataset";
-    let knowledgeQuerySent = "";
 
     if (!process.env.KNOWLEDGE_API_KEY?.trim()) {
       knowledgeStatus = "no_api_key";
     } else if (knowledgeDatasetIds.length === 0) {
       knowledgeStatus = "no_dataset";
     } else {
-      knowledgeQuerySent = sectionQuery;
       try {
         knowledgeText = await retrieveFromKnowledge(sectionQuery, {
           topK: 5,
@@ -78,17 +76,6 @@ export async function POST(request: NextRequest) {
     }
     const hasLocalRef = !!referenceText;
     const hasKnowledge = knowledgeStatus === "used";
-
-    if (knowledgeQuerySent) {
-      console.log("[知识库检索] 本节", {
-        检索关键词: sectionQuery,
-        状态: knowledgeStatus,
-        命中条数: hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0,
-      });
-      if (knowledgeText) {
-        console.log("[知识库检索结果] 本节注入内容：", knowledgeText);
-      }
-    }
 
     if (!outline?.length || !topic || !Number.isInteger(sectionIndex) || sectionIndex < 0) {
       return new Response(
@@ -166,15 +153,6 @@ ${styleHint}
           safeClose();
         };
         try {
-          const knowledgeRecordCount = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
-          const metaLine =
-            JSON.stringify({
-              _knowledgeStatus: knowledgeStatus,
-              _knowledgeQuery: knowledgeQuerySent,
-              _knowledgeRecordCount: knowledgeRecordCount,
-              _knowledgeText: knowledgeText || "",
-            }) + "\n";
-          safeEnqueue(encodeUtf8Chunk(metaLine));
           for await (const text of streamChatCompletion({
             messages,
             temperature: 0.6,
@@ -191,16 +169,11 @@ ${styleHint}
       },
     });
 
-    const knowledgeRecordCountForHeader = hasKnowledge ? knowledgeText.split("\n\n---\n\n").length : 0;
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "X-Knowledge-Used": hasKnowledge ? "true" : "false",
-        "X-Knowledge-Status": knowledgeStatus,
-        "X-Knowledge-Query": knowledgeQuerySent,
-        "X-Knowledge-Record-Count": String(knowledgeRecordCountForHeader),
       },
     });
   } catch (e) {

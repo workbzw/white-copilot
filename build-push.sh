@@ -6,7 +6,7 @@ set -e
 
 REGISTRY="ccr.ccs.tencentyun.com/workbzw"
 IMAGE="write-copilot"
-TAG="${1:-030119}"
+TAG="${1:-030120}"
 
 FULL_IMAGE="${REGISTRY}/${IMAGE}:${TAG}"
 
