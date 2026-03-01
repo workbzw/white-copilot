@@ -9,12 +9,13 @@ export type DocMeta = {
   updatedAt: string;
 };
 
-/** body 为富文本 HTML，非 Markdown；referenceText 为重点引用资料全文，供生成正文时使用 */
+/** body 为富文本 HTML，非 Markdown；referenceText 为重点引用资料全文；knowledgeDatasetIds 为本文档使用的知识库 id 列表 */
 export type DocContent = DocMeta & {
   topic: string;
   outline: string[];
   body: string;
   referenceText?: string;
+  knowledgeDatasetIds?: string[];
 };
 
 function userDir(userId: string): string {
@@ -93,6 +94,14 @@ export async function getDoc(userId: string, docId: string): Promise<DocContent 
         // 非 JSON 则保持原样（兼容旧数据）
       }
     }
+    let knowledgeDatasetIds: string[] | undefined;
+    try {
+      const k = meta.knowledgeDatasetIds;
+      if (Array.isArray(k)) knowledgeDatasetIds = k.filter((id): id is string => typeof id === "string");
+      else if (typeof k === "string") knowledgeDatasetIds = JSON.parse(k) as string[];
+    } catch {
+      // ignore
+    }
     return {
       id: docId,
       title: meta.title ?? "未命名",
@@ -101,6 +110,7 @@ export async function getDoc(userId: string, docId: string): Promise<DocContent 
       outline,
       body: body ?? "",
       referenceText: referenceText || undefined,
+      knowledgeDatasetIds: knowledgeDatasetIds?.length ? knowledgeDatasetIds : undefined,
     };
   } catch {
     return null;
@@ -110,7 +120,14 @@ export async function getDoc(userId: string, docId: string): Promise<DocContent 
 export async function putDoc(
   userId: string,
   docId: string | null,
-  payload: { title: string; topic: string; outline: string[]; body: string; referenceText?: string }
+  payload: {
+    title: string;
+    topic: string;
+    outline: string[];
+    body: string;
+    referenceText?: string;
+    knowledgeDatasetIds?: string[];
+  }
 ): Promise<DocMeta> {
   const dir = userDir(userId);
   await fs.mkdir(dir, { recursive: true });
@@ -124,6 +141,9 @@ export async function putDoc(
   };
   if (payload.referenceText != null && payload.referenceText !== "") {
     metaForFile.referenceText = JSON.stringify(payload.referenceText);
+  }
+  if (payload.knowledgeDatasetIds?.length) {
+    metaForFile.knowledgeDatasetIds = payload.knowledgeDatasetIds;
   }
   const content = stringifyFrontmatter(metaForFile, payload.body);
   await fs.writeFile(path.join(dir, `${id}.md`), content, "utf-8");

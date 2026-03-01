@@ -12,6 +12,19 @@ const STEPS = [
   { id: "optimize", label: "内容优化" },
 ] as const;
 
+/** 技术性错误（如 URL、fetch）不展示在正文框，改为友好提示 */
+function sanitizeBodyError(msg: string): string {
+  if (!msg || typeof msg !== "string") return "生成失败，请重试";
+  const t = msg.trim();
+  if (
+    /failed to parse url|parse URL|ECONNREFUSED|fetch failed|getaddrinfo|network/i.test(t) ||
+    /^\d+\.\d+\.\d+\.\d+:\d+/m.test(t) ||
+    t.length > 150
+  )
+    return "生成失败，请稍后重试";
+  return t;
+}
+
 type StyleMode = "ai" | "standard";
 
 export type ReportFormInitialData = {
@@ -21,6 +34,8 @@ export type ReportFormInitialData = {
   title?: string;
   /** 重点引用资料全文，生成正文时会传给模型以优先引用 */
   referenceText?: string;
+  /** 本文档使用的知识库 id 列表，空则使用系统默认 */
+  knowledgeDatasetIds?: string[];
 };
 
 type ReportFormProps = {
@@ -43,6 +58,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [reportTemplate, setReportTemplate] = useState("公告模板");
   const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("full");
   const [referenceText, setReferenceText] = useState("");
+  const [knowledgeDatasetOptions, setKnowledgeDatasetOptions] = useState<{ id: string; name: string }[]>([]);
+  const [selectedKnowledgeDatasetIds, setSelectedKnowledgeDatasetIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [bodyContent, setBodyContent] = useState("");
@@ -164,6 +181,14 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     });
   }, []);
 
+  /** 可选知识库列表（用于本对话选择不同知识库） */
+  useEffect(() => {
+    fetch("/api/knowledge-datasets")
+      .then((r) => r.json())
+      .then((list) => setKnowledgeDatasetOptions(Array.isArray(list) ? list : []))
+      .catch(() => setKnowledgeDatasetOptions([]));
+  }, []);
+
   /** 编辑已有文档：用 initialData 填充并进入正文/优化步骤（须在 addToContentHistory 之后） */
   const initialDataApplied = useRef(false);
   useEffect(() => {
@@ -176,6 +201,9 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     }
     if (typeof initialData.referenceText === "string" && initialData.referenceText.trim()) {
       setReferenceText(initialData.referenceText.trim());
+    }
+    if (Array.isArray(initialData.knowledgeDatasetIds)) {
+      setSelectedKnowledgeDatasetIds(initialData.knowledgeDatasetIds.filter((id) => typeof id === "string"));
     }
     if (initialData.body?.trim()) {
       addToContentHistory(initialData.body);
@@ -232,18 +260,29 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
             coreContent: coreContent || undefined,
             styleMode,
             referenceText: referenceText || undefined,
+            knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
           }),
           signal: ac.signal,
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setBodyContent((data.error as string) || "生成失败，请重试");
+          const raw = (data.error as string) || "生成失败，请重试";
+          setBodyContent(sanitizeBodyError(raw));
           return;
         }
+        const knowledgeUsed = res.headers.get("X-Knowledge-Used") === "true";
+        const knowledgeQuery = res.headers.get("X-Knowledge-Query") ?? "";
+        const knowledgeCount = res.headers.get("X-Knowledge-Record-Count") ?? "0";
+        console.log("[知识库检索] 全文生成", {
+          检索方式: "报告主题",
+          检索关键词: knowledgeQuery || "(未使用知识库)",
+          是否检索到内容: knowledgeUsed,
+          命中条数: Number(knowledgeCount) || 0,
+        });
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         if (!reader) {
-          setBodyContent("无法读取响应流");
+          setBodyContent("生成失败，请重试");
           return;
         }
         let text = "";
@@ -261,7 +300,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         if ((e as Error).name === "AbortError") {
           setBodyContent((prev) => prev || "[已终止生成]");
         } else {
-          setBodyContent((prev) => prev || "生成异常，请重试");
+          const msg = e instanceof Error ? e.message : "生成异常，请重试";
+          setBodyContent((prev) => prev || sanitizeBodyError(msg));
         }
       } finally {
         setIsBodyGenerating(false);
@@ -271,7 +311,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     }
 
     const totalWordCount = parseInt(wordCount, 10) || 100;
-    const wordCountPerSection = Math.max(200, Math.floor(totalWordCount / outline.length));
+    const wordCountPerSection = Math.max(20, Math.floor(totalWordCount / outline.length));
     const results = outline.map(() => "");
     bodySectionsRef.current = results;
     let completedCount = 0;
@@ -288,6 +328,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           coreContent: coreContent || undefined,
           styleMode,
           referenceText: referenceText || undefined,
+          knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
         }),
         signal: ac.signal,
       });
@@ -295,6 +336,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         const data = await res.json().catch(() => ({}));
         throw new Error((data.error as string) || `第 ${index + 1} 节生成失败`);
       }
+      const knowledgeUsed = res.headers.get("X-Knowledge-Used") === "true";
+      const knowledgeQuery = res.headers.get("X-Knowledge-Query") ?? "";
+      const knowledgeCount = res.headers.get("X-Knowledge-Record-Count") ?? "0";
+      console.log(`[知识库检索] 第 ${index + 1} 节`, {
+        检索方式: "报告主题 + 本节标题",
+        检索关键词: knowledgeQuery || "(未使用知识库)",
+        是否检索到内容: knowledgeUsed,
+        命中条数: Number(knowledgeCount) || 0,
+      });
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error("无法读取响应流");
@@ -332,13 +382,14 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       if ((e as Error).name === "AbortError") {
         setBodyContent((prev) => prev || "[已终止生成]");
       } else {
-        setBodyContent((prev) => prev || (e instanceof Error ? e.message : "生成异常，请重试"));
+        const msg = e instanceof Error ? e.message : "生成异常，请重试";
+        setBodyContent((prev) => prev || sanitizeBodyError(msg));
       }
     } finally {
       setIsBodyGenerating(false);
       bodyAbortRef.current = null;
     }
-  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, bodyGenMode, referenceText, buildFullTextFromSections, addToContentHistory]);
+  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, bodyGenMode, referenceText, selectedKnowledgeDatasetIds, buildFullTextFromSections, addToContentHistory]);
 
   useEffect(() => {
     if (step !== "body") {
@@ -534,7 +585,14 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, topic, outline: outlineList, body, referenceText: referenceText || undefined }),
+        body: JSON.stringify({
+          title,
+          topic,
+          outline: outlineList,
+          body,
+          referenceText: referenceText || undefined,
+          knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -551,7 +609,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     } finally {
       setSaveMdLoading(false);
     }
-  }, [userId, docId, topic, outline, referenceText, getCurrentBodyHtml, router]);
+  }, [userId, docId, topic, outline, referenceText, selectedKnowledgeDatasetIds, getCurrentBodyHtml, router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files;
@@ -716,6 +774,33 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   上传后，AI 将优先引用资料内容
                 </p>
               </section>
+
+              {knowledgeDatasetOptions.length > 0 && (
+                <section className="mb-6">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    本对话使用的知识库 <span className="text-gray-400">(可选)</span>
+                  </label>
+                  <select
+                    multiple
+                    value={selectedKnowledgeDatasetIds}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions, (o) => o.value);
+                      setSelectedKnowledgeDatasetIds(selected);
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    size={Math.min(4, knowledgeDatasetOptions.length)}
+                  >
+                    {knowledgeDatasetOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 text-xs text-gray-400">
+                    不选则使用系统默认；可多选，生成正文时从所选知识库检索
+                  </p>
+                </section>
+              )}
               </div>
               <div className="shrink-0 border-t border-gray-100 p-6 pt-4">
                 <button
@@ -779,6 +864,31 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   重新生成
                 </button>
               </div>
+
+              {knowledgeDatasetOptions.length > 0 && (
+                <section className="mb-4">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    本对话使用的知识库
+                  </label>
+                  <select
+                    multiple
+                    value={selectedKnowledgeDatasetIds}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions, (o) => o.value);
+                      setSelectedKnowledgeDatasetIds(selected);
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    size={Math.min(3, knowledgeDatasetOptions.length)}
+                  >
+                    {knowledgeDatasetOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-400">不选=系统默认；可多选</p>
+                </section>
+              )}
 
               <section className="mb-4">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">

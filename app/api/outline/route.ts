@@ -35,10 +35,18 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     const message = e instanceof Error ? e.message : "生成大纲失败，请稍后重试";
     const isConfigError = message.includes("API Key") || message.includes("LLM_API_KEY");
+    const status = (e as { status?: number })?.status;
+    const is401 = status === 401 || message.includes("401");
 
     if (isConfigError) {
       return NextResponse.json(
         { error: "未配置大模型 API Key，请在 .env 中设置 LLM_API_KEY（或 SILICONFLOW_API_KEY）" },
+        { status: 503 }
+      );
+    }
+    if (is401) {
+      return NextResponse.json(
+        { error: "大模型 API 鉴权失败（401），请检查 .env 中的 LLM_API_KEY 是否正确、是否已过期" },
         { status: 503 }
       );
     }

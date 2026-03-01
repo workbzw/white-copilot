@@ -9,6 +9,7 @@ export type DocInitialData = {
   body: string;
   title?: string;
   referenceText?: string;
+  knowledgeDatasetIds?: string[];
 };
 
 export default function DocEditPage({
@@ -43,6 +44,7 @@ export default function DocEditPage({
           body: data.body ?? "",
           title: data.title,
           referenceText: typeof data.referenceText === "string" ? data.referenceText : undefined,
+          knowledgeDatasetIds: Array.isArray(data.knowledgeDatasetIds) ? data.knowledgeDatasetIds : undefined,
         });
       })
       .catch(() => {

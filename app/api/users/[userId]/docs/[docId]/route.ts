@@ -36,7 +36,17 @@ export async function PUT(
     const outline = Array.isArray(body.outline) ? body.outline : [];
     const docBody = (body.body as string) ?? "";
     const referenceText = typeof body.referenceText === "string" ? body.referenceText : undefined;
-    const meta = await putDoc(userId, docId, { title, topic, outline, body: docBody, referenceText });
+    const knowledgeDatasetIds = Array.isArray(body.knowledgeDatasetIds)
+      ? (body.knowledgeDatasetIds as unknown[]).filter((id): id is string => typeof id === "string").filter(Boolean)
+      : undefined;
+    const meta = await putDoc(userId, docId, {
+      title,
+      topic,
+      outline,
+      body: docBody,
+      referenceText,
+      knowledgeDatasetIds: knowledgeDatasetIds?.length ? knowledgeDatasetIds : undefined,
+    });
     return NextResponse.json(meta);
   } catch (e) {
     console.error("[doc update]", e);
