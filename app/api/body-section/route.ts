@@ -126,9 +126,10 @@ ${styleHint}
       .filter(Boolean)
       .join("\n\n");
 
-    /** 将 UTF-8 文本编码为流式 chunk，避免 ByteString（仅 0–255）导致的报错 */
+    const textEncoder = new TextEncoder();
+    /** 将 UTF-8 文本编码为流式 chunk（标准 API，避免 ByteString/255 问题） */
     function encodeUtf8Chunk(text: string): Uint8Array {
-      return new Uint8Array(Buffer.from(text, "utf8"));
+      return textEncoder.encode(text);
     }
     const stream = new ReadableStream({
       async start(controller) {

@@ -43,6 +43,7 @@ function createClient(): AxiosInstance {
 
 /**
  * 非流式调用：发一次请求，返回完整回复文本。
+ * 请求体显式按 UTF-8 序列化，避免含中文时出现 ByteString/255 类错误。
  */
 export async function chatCompletion(params: {
   messages: ChatMessage[];
@@ -51,14 +52,18 @@ export async function chatCompletion(params: {
   maxTokens?: number;
 }): Promise<string> {
   const client = createClient();
-  const res = await client.post<{
-    choices?: Array<{ message?: { content?: string }; content?: string }>;
-  }>(CHAT_PATH, {
+  const payload = {
     model: params.model?.trim() || getModel(),
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
     max_tokens: params.maxTokens ?? 4096,
     stream: false,
+  };
+  const body = Buffer.from(JSON.stringify(payload), "utf8");
+  const res = await client.post<{
+    choices?: Array<{ message?: { content?: string }; content?: string }>;
+  }>(CHAT_PATH, body, {
+    headers: { "Content-Type": "application/json; charset=utf-8" },
   });
   const choice = res.data?.choices?.[0];
   const content = choice?.message?.content ?? (choice as { content?: string })?.content ?? "";
@@ -67,6 +72,7 @@ export async function chatCompletion(params: {
 
 /**
  * 流式调用：返回异步迭代器，收到一段就 yield 一段。
+ * 请求体显式按 UTF-8 序列化，避免含中文时出现 ByteString/255 类错误。
  */
 export async function* streamChatCompletion(params: {
   messages: ChatMessage[];
@@ -75,16 +81,21 @@ export async function* streamChatCompletion(params: {
   maxTokens?: number;
 }): AsyncGenerator<string, void, unknown> {
   const client = createClient();
+  const payload = {
+    model: params.model?.trim() || getModel(),
+    messages: params.messages,
+    temperature: params.temperature ?? 0.7,
+    max_tokens: params.maxTokens ?? 4096,
+    stream: true,
+  };
+  const body = Buffer.from(JSON.stringify(payload), "utf8");
   const res = await client.post(
     CHAT_PATH,
+    body,
     {
-      model: params.model?.trim() || getModel(),
-      messages: params.messages,
-      temperature: params.temperature ?? 0.7,
-      max_tokens: params.maxTokens ?? 4096,
-      stream: true,
-    },
-    { responseType: "stream" }
+      responseType: "stream",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    }
   );
   const stream = res.data as import("stream").Readable;
   const queue: string[] = [];
