@@ -311,6 +311,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           setIsBodyGenerating(false);
           return;
         }
+        const targetWords = Math.max(100, parseInt(wordCount, 10) || 3000);
         let buffer = "";
         let text = "";
         while (true) {
@@ -320,7 +321,9 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           text += buffer;
           buffer = "";
           setBodyContent(text);
-          setBodyProgress((p) => Math.min(99, p + 1));
+          // 按已生成字数/目标字数动态进度（中文约 1 字=1 字符）
+          const p = Math.min(99, Math.round((text.length / targetWords) * 100));
+          setBodyProgress(p);
         }
         if (buffer) text += buffer;
         setBodyContent(text);
@@ -388,7 +391,9 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         setBodySections([...bodySectionsRef.current]);
       }
       completedCount += 1;
-      setBodyProgress(Math.round((completedCount / outline.length) * 100));
+      // 按已生成总字数/目标总字数动态进度（与字数挂钩，不再固定按节数）
+      const totalLength = bodySectionsRef.current.reduce((sum, s) => sum + (s?.length ?? 0), 0);
+      setBodyProgress(Math.min(99, Math.round((totalLength / totalWordCount) * 100)));
     };
 
     try {
@@ -1173,7 +1178,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-4 shrink-0 flex items-center justify-between gap-4">
                 <span className="text-sm text-gray-600">
-                  生成进度: {bodyProgress}%
+                  {isBodyGenerating ? "生成中" : bodyCompleted ? "已完成" : "—"}
                 </span>
                 <div className="flex gap-2">
                   <button

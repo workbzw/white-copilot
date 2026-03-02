@@ -62,6 +62,11 @@ export async function retrieveFromKnowledge(
       : [];
 
   const allChunks: string[] = [];
+  /** 无命中时用于在一条日志里写清原因 */
+  const apiFailures: { datasetId: string; status: number; bodyPreview: string }[] = [];
+  let successEmptyCount = 0; // 200 但返回列表为空
+  let successNoContentCount = 0; // 200 且列表有项，但解析不出 content
+
   for (const datasetId of datasetIds) {
     const payload = {
       query: query.trim(),
@@ -107,7 +112,9 @@ export async function retrieveFromKnowledge(
 
     if (!res.ok) {
       const text = await res.text();
-      console.error("[knowledge-retrieve] API 请求失败", res.status, url, text.slice(0, 500));
+      const bodyPreview = text.slice(0, 300);
+      apiFailures.push({ datasetId, status: res.status, bodyPreview });
+      console.error("[knowledge-retrieve] API 请求失败", res.status, url, bodyPreview);
       continue;
     }
 
@@ -131,6 +138,10 @@ export async function retrieveFromKnowledge(
       data.data ??
       (Array.isArray(data) ? data : []);
 
+    const chunksBefore = allChunks.length;
+    if (list.length === 0) {
+      successEmptyCount += 1;
+    }
     if (list.length > 0 && allChunks.length === 0 && datasetIds.indexOf(datasetId) === 0) {
       const first = list[0] as Record<string, unknown>;
       console.log("[knowledge-retrieve] 响应有 records 但未解析到 content，首条 keys:", Object.keys(first || {}));
@@ -149,6 +160,9 @@ export async function retrieveFromKnowledge(
         allChunks.push(content.trim());
       }
     }
+    if (list.length > 0 && allChunks.length === chunksBefore) {
+      successNoContentCount += 1;
+    }
   }
 
   const result = allChunks.join("\n\n---\n\n");
@@ -161,11 +175,24 @@ export async function retrieveFromKnowledge(
       totalChars: result.length,
     });
   } else {
+    let reason: string;
+    if (apiFailures.length === datasetIds.length) {
+      reason = `所有 ${datasetIds.length} 个知识库 API 请求均失败：${apiFailures.map((f) => `${f.datasetId}→${f.status}`).join(", ")}`;
+    } else if (apiFailures.length > 0) {
+      reason = `部分请求失败（${apiFailures.map((f) => `${f.datasetId}→${f.status}`).join(", ")}），其余返回无有效内容`;
+    } else if (successNoContentCount > 0) {
+      reason = "接口返回了数据但响应格式与预期不符（需 segment.content / content / text 之一），无法解析出正文";
+    } else if (successEmptyCount === datasetIds.length) {
+      reason = "所有知识库均返回空结果，检索无命中";
+    } else {
+      reason = "未解析到任何有效正文";
+    }
     console.log("[knowledge-retrieve] 无命中", {
       query: query.trim().slice(0, 50),
       knowledgeBases: datasetIds.length,
       datasetIds,
-      hint: "可能检索接口报错或返回格式不符，请查看上方是否有 API 请求失败日志",
+      reason,
+      ...(apiFailures.length > 0 ? { apiErrors: apiFailures.map((f) => ({ id: f.datasetId, status: f.status, body: f.bodyPreview })) } : {}),
     });
   }
   if (allChunks.length === 0) return "";

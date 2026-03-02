@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 按用户目标字数限制：中文约 1～1.5 字/token，maxTokens 收紧以免超出字数太多
+    // 按用户目标字数限制：中文约 1～1.5 token/字，maxTokens 需大于总字数对应 token 否则会截断卡在 99%
     const requestedWords = Math.max(100, parseInt(wordCount, 10) || 3000);
-    const maxTokens = Math.min(32768, Math.max(256, Math.ceil((requestedWords * 1.2) + 100)));
+    const maxTokens = Math.min(32768, Math.max(256, Math.ceil((requestedWords * 1.8) + 300)));
 
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";

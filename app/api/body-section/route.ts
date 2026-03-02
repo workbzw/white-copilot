@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
       20,
       Math.floor(Number(body.wordCountPerSection) || 600)
     );
-    // 按本节字数限制 token，避免产出远超字数
-    const maxTokens = Math.min(16384, Math.max(128, Math.ceil((wordCountPerSection * 1.2) + 50)));
+    // 按本节字数限制 token：需大于本节字数对应 token，否则会截断卡在 99%（中文约 1～1.5 token/字）
+    const maxTokens = Math.min(16384, Math.max(128, Math.ceil((wordCountPerSection * 1.8) + 150)));
 
     const reportTemplate = (body.reportTemplate as string)?.trim() || "公告模板";
     const coreContent = (body.coreContent as string)?.trim() || "";
