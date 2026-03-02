@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
     );
     // 按本节字数限制 token：需大于本节字数对应 token，否则会截断卡在 99%（中文约 1～1.5 token/字）
     const maxTokens = Math.min(16384, Math.max(128, Math.ceil((wordCountPerSection * 1.8) + 150)));
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[body-section] wordCountPerSection:", wordCountPerSection, "maxTokens:", maxTokens);
+    }
 
     const reportTemplate = (body.reportTemplate as string)?.trim() || "公告模板";
     const coreContent = (body.coreContent as string)?.trim() || "";
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
 ${styleHint}
 要求：
 1. 本节标题为：${sectionTitle}。不要在正文中重复该标题，只写标题下方的正文。
-2. 本节字数须控制在 ${wordCountPerSection} 字以内，约 ${wordCountPerSection} 字即可，不要超过 ${wordCountPerSection} 字。
+2. 本节正文必须达到约 ${wordCountPerSection} 字（中文，含标点）。务必写满约 ${wordCountPerSection} 字后再结束，不要提前收尾；可略超但不得明显不足。字数按正文纯文字计算，不含 Markdown 符号；勿堆砌格式，以自然段落为主。
 3. 只输出本节正文，不要输出“好的”“以下是”等前缀，不要写其他节。
 4. 使用中文，内容专业、数据与逻辑可信。
 5. ${refRule}`;
@@ -115,12 +118,12 @@ ${styleHint}
     const outlineContext = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const userContent = [
       `报告主题：${topic.normalize("NFC")}`,
-      `字数要求：本节控制在 ${wordCountPerSection} 字以内，约 ${wordCountPerSection} 字，不要超过 ${wordCountPerSection} 字`,
+      `字数要求：本节必须写满约 ${wordCountPerSection} 字（中文），不要提前结束，务必达到约 ${wordCountPerSection} 字。`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
       referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
       `全文大纲（供参考）：\n${outlineContext}`,
-      `请只撰写第 ${sectionIndex + 1} 节「${sectionTitle}」的正文。`,
+      `请只撰写第 ${sectionIndex + 1} 节「${sectionTitle}」的正文，写满约 ${wordCountPerSection} 字后结束。`,
     ]
       .filter(Boolean)
       .join("\n\n");

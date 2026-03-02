@@ -3,9 +3,13 @@ import { getDoc, putDoc } from "@/lib/docs-storage";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ userId: string; docId: string }> }
+  context?: { params?: Promise<{ userId: string; docId: string }> }
 ) {
   try {
+    const params = context?.params;
+    if (!params) {
+      return NextResponse.json({ error: "路由参数缺失" }, { status: 400 });
+    }
     const { userId, docId } = await params;
     if (!userId || !docId) {
       return NextResponse.json({ error: "缺少 userId 或 docId" }, { status: 400 });
@@ -23,9 +27,13 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ userId: string; docId: string }> }
+  context?: { params?: Promise<{ userId: string; docId: string }> }
 ) {
   try {
+    const params = context?.params;
+    if (!params) {
+      return NextResponse.json({ error: "路由参数缺失" }, { status: 400 });
+    }
     const { userId, docId } = await params;
     if (!userId || !docId) {
       return NextResponse.json({ error: "缺少 userId 或 docId" }, { status: 400 });

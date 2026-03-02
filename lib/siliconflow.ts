@@ -40,6 +40,7 @@ export function getSiliconFlowChatModel(options?: {
   const model = options?.model?.trim() || getModel();
   const apiKey = getApiKey();
   const baseURL = getBaseUrl();
+  const maxTokens = options?.maxTokens ?? 4096;
   return new ChatOpenAI({
     model,
     apiKey,
@@ -48,7 +49,9 @@ export function getSiliconFlowChatModel(options?: {
       apiKey,
     },
     temperature: options?.temperature ?? 0.7,
-    maxTokens: options?.maxTokens ?? 4096,
+    maxTokens,
+    // 显式传入 max_tokens，避免部分兼容接口或流式场景下未正确传递导致默认 2048 截断
+    modelKwargs: maxTokens > 0 ? { max_tokens: maxTokens } : undefined,
   });
 }
 

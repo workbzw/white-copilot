@@ -3,7 +3,7 @@ import { getSiliconFlowChatModel } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-export const maxDuration = 120;
+export const maxDuration = 600;
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,9 +44,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 按用户目标字数限制：中文约 1～1.5 token/字，maxTokens 需大于总字数对应 token 否则会截断卡在 99%
+    // 全文生成：预留足够 token，避免未写满就因上限停（中文约 1.2～1.5 token/字，系数 2.0 留余量）
     const requestedWords = Math.max(100, parseInt(wordCount, 10) || 3000);
-    const maxTokens = Math.min(32768, Math.max(256, Math.ceil((requestedWords * 1.8) + 300)));
+    const maxTokens = Math.min(32768, Math.max(256, Math.ceil((requestedWords * 2.0) + 500)));
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[body] requestedWords:", requestedWords, "maxTokens:", maxTokens);
+    }
 
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
     let knowledgeText = "";
@@ -76,6 +79,10 @@ export async function POST(request: NextRequest) {
     const hasKnowledge = knowledgeStatus === "used";
 
     const outlineText = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
+    const wordsPerSectionHint =
+      outline.length > 0
+        ? `建议各节字数分配：共约 ${wordCount} 字、${outline.length} 节，每节约 ${Math.round(requestedWords / outline.length)} 字，请按此量写足。`
+        : "";
     const styleHint =
       styleMode === "standard"
         ? "请严格按标准公文格式与用语撰写，层次清晰、用语规范。"
@@ -86,11 +93,15 @@ export async function POST(request: NextRequest) {
         ? "若同时提供了本地引用文章与知识库检索结果，则重点引用本地文章，适当引用知识库作为补充。"
         : "若用户提供了重点引用资料，正文中必须引用其中的关键数据、表述或观点，应明确体现资料内容，不得完全脱离资料发挥。";
 
-    const systemPrompt = `你是一名专业报告撰写助手。请根据用户提供的大纲和主题，撰写完整报告正文。
+    const systemPrompt = `你是一名专业报告撰写助手。请根据用户提供的大纲和主题，一次性输出整篇报告正文（全文生成，单次回复写完全文）。
+
+【字数硬性要求】全文总字数必须达到约 ${wordCount} 字（中文正文，含标点）。禁止在未写满约 ${wordCount} 字前结束。若某节写完后总字数仍不足，请在后续节中继续补充、展开论述，直至全文达到约 ${wordCount} 字。可略超不可明显不足。
+
 ${styleHint}
-要求：
+
+其他要求：
 1. 按给定大纲逐节撰写，每节标题使用与大纲一致的格式（如一、二、三或对应标题）。
-2. 总字数须控制在 ${wordCount} 字以内，约 ${wordCount} 字即可，不要超过 ${wordCount} 字。按大纲合理分配到各节。
+2. 字数按正文纯文字（汉字与标点）计算，不含 Markdown 符号；勿堆砌格式，以自然段落为主。
 3. 只输出报告正文，不要输出“好的”“以下是”等前缀。
 4. 使用中文，内容专业、数据与逻辑可信。
 5. ${refRule}`;
@@ -105,11 +116,12 @@ ${styleHint}
 
     const userContent = [
       `报告主题：${topic.normalize("NFC")}`,
-      `字数要求：全文控制在 ${wordCount} 字以内，约 ${wordCount} 字，不要超过 ${wordCount} 字`,
+      `字数要求：全文必须写满约 ${wordCount} 字（中文），禁止提前结束，务必达到约 ${wordCount} 字。${wordsPerSectionHint}`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent.normalize("NFC")}` : "",
       referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
       `大纲：\n${outlineText}`,
+      `请从第一条大纲开始，连续输出整篇正文，写满约 ${wordCount} 字后再结束。`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -118,7 +130,7 @@ ${styleHint}
       return new Uint8Array(Buffer.from(text, "utf8"));
     }
     const llm = getSiliconFlowChatModel({
-      temperature: 0.6,
+      temperature: 0.5,
       maxTokens,
     });
     const stream = new ReadableStream({

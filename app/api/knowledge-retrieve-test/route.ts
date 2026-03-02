@@ -8,7 +8,8 @@ import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
  * 返回：{ success, recordCount, totalChars, preview?, error? }
  */
 export async function GET(request: NextRequest) {
-  const query = request.nextUrl.searchParams.get("query")?.trim() || "测试";
+  const query =
+    request.nextUrl?.searchParams.get("query")?.trim() || "测试";
   return runTest(query);
 }
 

@@ -263,8 +263,13 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     setIsBodyGenerating(true);
     setBodySections(bodyGenMode === "sections" ? outline.map(() => "") : []);
 
-    // 防止接口/流挂起导致一直“正在生成”：90 秒后自动中止
-    const timeoutMs = 90_000;
+    // 超时与目标字数/节数挂钩，避免长文未生成完就因连接超时被断开（约 20 字/秒预留，上限 10 分钟）
+    const TEN_MIN_MS = 10 * 60 * 1000;
+    const totalWords = Math.max(100, parseInt(wordCount, 10) || 3000);
+    const timeoutMs =
+      bodyGenMode === "full"
+        ? Math.min(TEN_MIN_MS, Math.max(90_000, Math.ceil((totalWords / 20) * 1000)))
+        : Math.max(90_000, Math.min(TEN_MIN_MS, outline.length * 70 * 1000));
     const timeoutId = setTimeout(() => {
       if (bodyAbortRef.current === ac) {
         ac.abort();
