@@ -3,9 +3,9 @@
 # 用法: 先修改下面变量，再 chmod +x deploy.sh && ./deploy.sh
 
 # ========== 按你的环境修改这里 ==========
-export LLM_BASE_URL="https://api.siliconflow.cn/v1"
-export LLM_MODEL="deepseek-ai/DeepSeek-V3.2"
-export LLM_API_KEY="sk-mgubibjtdksrcejvbzowwijegdmteujktpdkerysxmvkpdhq"
+export LLM_BASE_URL="http://10.96.91.228:1025/v1"
+export LLM_MODEL="deepseek_32b"
+export LLM_API_KEY="sk-sntgzyndiukafftszxatgcjfawdneobqkhravkgysxounyoh"
 # 知识库（可选）：与 agent-prd-nginx 同网络，用容器名访问
 export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
 export KNOWLEDGE_BASE_URL="http://agent-prd-nginx"
