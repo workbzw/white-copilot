@@ -761,7 +761,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
               href={`/user/${encodeURIComponent(userId)}`}
               className="text-sm text-[#2563eb] hover:underline"
             >
-              历史档案
+              历史记录
             </Link>
           )}
         </div>

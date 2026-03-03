@@ -11,12 +11,12 @@ export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
 export KNOWLEDGE_BASE_URL="http://agent-prd-nginx/v1"
 # ========================================
 
-docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030307
+docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030308
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
 
-# 宿主机先创建 data/users 并放宽权限，避免容器内 EACCES（应用需在此目录下写用户文档）
-mkdir -p data/users
-chmod 777 data
+# 宿主机先创建 data/users（及 default 用户目录）并放宽权限，避免容器内 EACCES（应用需在此目录下写用户文档）
+mkdir -p data/users/default
+chmod -R 777 data
 
 docker run -d -p 3080:3080 \
   --network agent-prd_default \
@@ -28,6 +28,6 @@ docker run -d -p 3080:3080 \
   -e "KNOWLEDGE_BASE_URL=$KNOWLEDGE_BASE_URL" \
   -v "$(pwd)/data:/app/data" \
   --name write-copilot \
-  ccr.ccs.tencentyun.com/workbzw/write-copilot:030307
+  ccr.ccs.tencentyun.com/workbzw/write-copilot:030308
 
 echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3080"
