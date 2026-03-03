@@ -14,6 +14,9 @@ export default function UserDocsPage({
   const [docs, setDocs] = useState<DocMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -47,6 +50,34 @@ export default function UserDocsPage({
       mounted = false;
     };
   }, [params]);
+
+  const handleDeleteClick = (e: React.MouseEvent, docId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirmDeleteId(docId);
+  };
+
+  const handleConfirmDelete = async () => {
+    const docId = confirmDeleteId;
+    if (!docId) return;
+    setConfirmDeleteId(null);
+    setDeletingId(docId);
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}/docs/${encodeURIComponent(docId)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setToastMessage((data.error as string) || "删除失败");
+        return;
+      }
+      setDocs((prev) => prev.filter((d) => d.id !== docId));
+    } catch {
+      setToastMessage("删除失败，请稍后重试");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const formatDate = (iso: string) => {
     if (!iso) return "";
@@ -138,6 +169,22 @@ export default function UserDocsPage({
                     <span className="shrink-0 text-xs text-slate-400 tabular-nums">
                       {formatDate(doc.updatedAt)}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteClick(e, doc.id)}
+                      disabled={deletingId === doc.id}
+                      className="shrink-0 rounded p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      title="删除"
+                      aria-label="删除文档"
+                    >
+                      {deletingId === doc.id ? (
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                      ) : (
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
                     <span
                       className="shrink-0 text-slate-300 transition group-hover:text-slate-500"
                       aria-hidden
@@ -151,6 +198,77 @@ export default function UserDocsPage({
           )}
         </div>
       </main>
+
+      {/* 删除确认弹窗 */}
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-delete-title"
+        >
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setConfirmDeleteId(null)}
+            aria-hidden="true"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl">
+            <h2 id="confirm-delete-title" className="text-lg font-semibold text-slate-800">
+              确认删除
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              确定要删除这篇文档吗？删除后无法恢复。
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+              >
+                确定删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 提示信息弹窗 */}
+      {toastMessage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="toast-message-title"
+        >
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setToastMessage(null)}
+            aria-hidden="true"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl">
+            <h2 id="toast-message-title" className="text-lg font-semibold text-slate-800">
+              提示
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">{toastMessage}</p>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setToastMessage(null)}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

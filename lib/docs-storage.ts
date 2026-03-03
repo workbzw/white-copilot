@@ -166,3 +166,25 @@ export async function putDoc(
   await fs.writeFile(manifest, JSON.stringify(list, null, 2), "utf-8");
   return meta;
 }
+
+/** 删除指定文档：删除文件并从 manifest 中移除 */
+export async function deleteDoc(userId: string, docId: string): Promise<boolean> {
+  const file = docPath(userId, docId);
+  const manifest = manifestPath(userId);
+  try {
+    await fs.unlink(file);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
+  }
+  try {
+    const data = await fs.readFile(manifest, "utf-8");
+    const list = JSON.parse(data) as DocMeta[];
+    if (!Array.isArray(list)) return true;
+    const next = list.filter((d) => d.id !== docId);
+    if (next.length === list.length) return true;
+    await fs.writeFile(manifest, JSON.stringify(next, null, 2), "utf-8");
+  } catch {
+    // manifest 不存在或解析失败时只删文件即可
+  }
+  return true;
+}

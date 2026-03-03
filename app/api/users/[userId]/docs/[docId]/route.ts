@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDoc, putDoc } from "@/lib/docs-storage";
+import { deleteDoc, getDoc, putDoc } from "@/lib/docs-storage";
 
 export async function GET(
   _request: NextRequest,
@@ -59,5 +59,26 @@ export async function PUT(
   } catch (e) {
     console.error("[doc update]", e);
     return NextResponse.json({ error: "更新文档失败" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  context?: { params?: Promise<{ userId: string; docId: string }> }
+) {
+  try {
+    const params = context?.params;
+    if (!params) {
+      return NextResponse.json({ error: "路由参数缺失" }, { status: 400 });
+    }
+    const { userId, docId } = await params;
+    if (!userId || !docId) {
+      return NextResponse.json({ error: "缺少 userId 或 docId" }, { status: 400 });
+    }
+    await deleteDoc(userId, docId);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("[doc delete]", e);
+    return NextResponse.json({ error: "删除文档失败" }, { status: 500 });
   }
 }
