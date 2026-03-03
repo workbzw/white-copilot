@@ -127,6 +127,13 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const bodyContentScrollRef = useRef<HTMLDivElement>(null);
   const previewEditableRef = useRef<HTMLDivElement>(null);
   const bodySectionsRef = useRef<string[]>([]);
+  /** 当前大纲条数，删除项时更新；生成中若大纲被缩短，不再写入已无效的 section index */
+  const outlineLengthRef = useRef(0);
+  /** 当前大纲内容，用于生成结束时用最新 outline 拼正文（避免删除项后仍用旧 outline） */
+  const outlineRef = useRef<string[]>([]);
+  useEffect(() => {
+    outlineRef.current = outline ?? [];
+  }, [outline]);
   /** 点击格式按钮时保存的选区，避免点击导致选区丢失 */
   const savedRangeRef = useRef<Range | null>(null);
 
@@ -151,9 +158,10 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   }, [updateToolbarState]);
 
   const buildFullTextFromSections = useCallback(
-    (sections: string[]) => {
-      if (!outline?.length) return "";
-      return outline
+    (sections: string[], outlineOverride?: string[]) => {
+      const list = outlineOverride ?? outline ?? [];
+      if (!list.length) return "";
+      return list
         .map((title, i) => `## ${title}\n\n${sections[i] ?? ""}`)
         .join("\n\n")
         .trim();
@@ -267,6 +275,13 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     if (!outline) return;
     const next = outline.filter((_, i) => i !== index);
     setOutline(renumberOutlineItems(next));
+    outlineLengthRef.current = next.length;
+    // 同步裁剪已生成的正文分节与 ref，避免正文里出现重复或错位
+    setBodySections((prev) => {
+      const nextSections = prev.filter((_, i) => i !== index);
+      bodySectionsRef.current = nextSections;
+      return nextSections;
+    });
   };
 
   const addOutlineItem = () => {
@@ -389,6 +404,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     const wordCountPerSection = Math.max(20, Math.floor(totalWordCount / outline.length));
     const results = outline.map(() => "");
     bodySectionsRef.current = results;
+    outlineLengthRef.current = outline.length;
     let completedCount = 0;
     const runSectionStream = async (index: number): Promise<void> => {
       const res = await fetch("/api/body-section", {
@@ -422,13 +438,17 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         buffer += decoder.decode(value, { stream: true });
         sectionText += buffer;
         buffer = "";
-        bodySectionsRef.current[index] = sectionText;
-        setBodySections([...bodySectionsRef.current]);
+        if (index < outlineLengthRef.current) {
+          bodySectionsRef.current[index] = sectionText;
+          setBodySections([...bodySectionsRef.current]);
+        }
       }
       if (buffer) {
         sectionText += buffer;
-        bodySectionsRef.current[index] = sectionText;
-        setBodySections([...bodySectionsRef.current]);
+        if (index < outlineLengthRef.current) {
+          bodySectionsRef.current[index] = sectionText;
+          setBodySections([...bodySectionsRef.current]);
+        }
       }
       completedCount += 1;
       // 按已生成总字数/目标总字数动态进度（与字数挂钩，不再固定按节数）
@@ -450,8 +470,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       );
       await Promise.all(workers);
       if (ac.signal.aborted) return;
-      const fullText = buildFullTextFromSections(bodySectionsRef.current);
-      addToContentHistory(fullText);
+      const fullText = buildFullTextFromSections(bodySectionsRef.current, outlineRef.current);
+      if (fullText) addToContentHistory(fullText);
       setBodyProgress(100);
       setBodyCompleted(true);
     } catch (e) {
