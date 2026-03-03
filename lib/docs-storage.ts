@@ -1,7 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
 
-const DATA_ROOT = path.join(process.cwd(), "data", "users");
+/** 用户数据根目录，部署时可设置 DATA_ROOT 指向有写权限的路径（如 /var/lib/xxx/users） */
+function getDataRoot(): string {
+  const env = process.env.DATA_ROOT?.trim();
+  if (env) return path.resolve(env);
+  return path.join(process.cwd(), "data", "users");
+}
 
 export type DocMeta = {
   id: string;
@@ -21,7 +26,7 @@ export type DocContent = DocMeta & {
 function userDir(userId: string): string {
   const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "");
   if (!safe) throw new Error("invalid userId");
-  return path.join(DATA_ROOT, safe);
+  return path.join(getDataRoot(), safe);
 }
 
 function manifestPath(userId: string): string {
