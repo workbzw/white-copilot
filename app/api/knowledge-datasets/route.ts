@@ -34,7 +34,7 @@ function getConfigStatus(): KnowledgeConfigStatus {
   const apiKey = process.env.KNOWLEDGE_API_KEY?.trim();
   let baseUrl = (process.env.KNOWLEDGE_BASE_URL ?? DEFAULT_KNOWLEDGE_BASE_URL).trim().replace(/\/$/, "");
   if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
-  const requestUrl = baseUrl ? `${baseUrl}/v1/datasets?page=1&limit=100` : "";
+  const requestUrl = baseUrl ? `${baseUrl}/datasets?page=1&limit=100` : "";
   const requestInfo = {
     method: "GET",
     url: requestUrl,
@@ -58,7 +58,7 @@ export async function GET() {
 
   if (apiKey) {
     try {
-      const url = `${baseUrl}/v1/datasets?page=1&limit=100`;
+      const url = `${baseUrl}/datasets?page=1&limit=100`;
       const res = await fetch(url, {
         method: "GET",
         headers: {

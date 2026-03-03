@@ -1,0 +1,36 @@
+diff --git a/node_modules/openai/internal/to-file.js b/node_modules/openai/internal/to-file.js
+index 229fd5c..36a9247 100644
+--- a/node_modules/openai/internal/to-file.js
++++ b/node_modules/openai/internal/to-file.js
+@@ -47,7 +47,12 @@ async function toFile(value, name, options) {
+     }
+     if (isResponseLike(value)) {
+         const blob = await value.blob();
+-        name || (name = new URL(value.url).pathname.split(/[\\/]/).pop());
++        try {
++            const parsed = value.url ? new URL(value.url, "http://localhost") : null;
++            name || (name = parsed?.pathname?.split(/[\\/]/).pop());
++        } catch (_) {
++            // value.url may be relative or invalid; leave name as-is
++        }
+         return (0, uploads_1.makeFile)(await getBytes(blob), name, options);
+     }
+     const parts = await getBytes(value);
+diff --git a/node_modules/openai/internal/to-file.mjs b/node_modules/openai/internal/to-file.mjs
+index b4a0e42..a444c79 100644
+--- a/node_modules/openai/internal/to-file.mjs
++++ b/node_modules/openai/internal/to-file.mjs
+@@ -44,7 +44,12 @@ export async function toFile(value, name, options) {
+     }
+     if (isResponseLike(value)) {
+         const blob = await value.blob();
+-        name || (name = new URL(value.url).pathname.split(/[\\/]/).pop());
++        try {
++            const parsed = value.url ? new URL(value.url, "http://localhost") : null;
++            name || (name = parsed?.pathname?.split(/[\\/]/).pop());
++        } catch (_) {
++            // value.url may be relative or invalid; leave name as-is
++        }
+         return makeFile(await getBytes(blob), name, options);
+     }
+     const parts = await getBytes(value);

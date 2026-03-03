@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSiliconFlowChatModel } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
+import { getSystemPersona } from "@/lib/prompt-persona";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 600;
@@ -93,7 +94,20 @@ export async function POST(request: NextRequest) {
         ? "若同时提供了本地引用文章与知识库检索结果，则重点引用本地文章，适当引用知识库作为补充。"
         : "若用户提供了重点引用资料，正文中必须引用其中的关键数据、表述或观点，应明确体现资料内容，不得完全脱离资料发挥。";
 
-    const systemPrompt = `你是一名专业报告撰写助手。请根据用户提供的大纲和主题，一次性输出整篇报告正文（全文生成，单次回复写完全文）。
+    const referenceBlocks: string[] = [];
+    if (hasLocalRef) {
+      referenceBlocks.push(`【重点引用资料（本地文章，正文须重点引用）】\n\n${referenceText!.trim().normalize("NFC")}`);
+    }
+    if (hasKnowledge) {
+      referenceBlocks.push(`【知识库检索（可适当引用补充）】\n\n${knowledgeText.normalize("NFC")}`);
+    }
+    const referencesSection = referenceBlocks.length ? `\n\n【以下为参考资料，撰写时须按要求引用】\n\n${referenceBlocks.join("\n\n")}` : "";
+
+    const systemPrompt = `${getSystemPersona()}
+
+---
+
+【本次任务】你作为上述研究员，根据用户提供的大纲和主题，一次性输出整篇报告正文（全文生成，单次回复写完全文）。
 
 【字数硬性要求】全文总字数必须达到约 ${wordCount} 字（中文正文，含标点）。禁止在未写满约 ${wordCount} 字前结束。若某节写完后总字数仍不足，请在后续节中继续补充、展开论述，直至全文达到约 ${wordCount} 字。可略超不可明显不足。
 
@@ -104,22 +118,13 @@ ${styleHint}
 2. 字数按正文纯文字（汉字与标点）计算，不含 Markdown 符号；勿堆砌格式，以自然段落为主。
 3. 只输出报告正文，不要输出“好的”“以下是”等前缀。
 4. 使用中文，内容专业、数据与逻辑可信。
-5. ${refRule}`;
-
-    const referenceBlocks: string[] = [];
-    if (hasLocalRef) {
-      referenceBlocks.push(`【重点引用资料（本地文章，正文须重点引用）】\n\n${referenceText!.trim().normalize("NFC")}`);
-    }
-    if (hasKnowledge) {
-      referenceBlocks.push(`【知识库检索（可适当引用补充）】\n\n${knowledgeText.normalize("NFC")}`);
-    }
+5. ${refRule}${referencesSection}`;
 
     const userContent = [
       `报告主题：${topic.normalize("NFC")}`,
       `字数要求：全文必须写满约 ${wordCount} 字（中文），禁止提前结束，务必达到约 ${wordCount} 字。${wordsPerSectionHint}`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent.normalize("NFC")}` : "",
-      referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
       `大纲：\n${outlineText}`,
       `请从第一条大纲开始，连续输出整篇正文，写满约 ${wordCount} 字后再结束。`,
     ]

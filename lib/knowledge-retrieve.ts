@@ -2,6 +2,12 @@
  * 知识库检索：调用外部 retrieve API，将检索结果拼成可注入报告的文本。
  * 环境变量：KNOWLEDGE_API_KEY、KNOWLEDGE_BASE_URL、
  *   KNOWLEDGE_DATASET_ID（单个）或 KNOWLEDGE_DATASET_IDS（多个，逗号分隔）
+ *
+ * API 约定（与 agent-x.maas.com.cn 等兼容）：
+ * - 请求：POST {BASE_URL}/datasets/{dataset_id}/retrieve
+ *   Body: { query, retrieval_model: { search_method, top_k, reranking_enable, metadata_filtering_conditions, ... } }
+ * - 响应：{ query: { content }, records: [ { segment: { content, document, ... }, score }, ... ] }
+ * - 正文取自 records[].segment.content
  */
 
 const DEFAULT_KNOWLEDGE_BASE_URL = "http://192.168.93.128:11014";
@@ -71,7 +77,7 @@ export async function retrieveFromKnowledge(
     const payload = {
       query: query.trim(),
       retrieval_model: {
-        search_method: "keyword_search",
+        search_method: "hybrid_search",
         reranking_enable: options.rerankingEnable ?? false,
         reranking_mode: null,
         reranking_model: {
@@ -89,7 +95,10 @@ export async function retrieveFromKnowledge(
       },
     };
 
-    const url = `${baseUrl}/v1/datasets/${encodeURIComponent(datasetId)}/retrieve`;
+    const url = `${baseUrl}/datasets/${encodeURIComponent(datasetId)}/retrieve`;
+    if (process.env.NODE_ENV !== "production" && datasetIds.indexOf(datasetId) === 0) {
+      console.log("[knowledge-retrieve] 请求", { url, query: payload.query, top_k: payload.retrieval_model.top_k });
+    }
     const bodyStr = JSON.stringify(payload);
     const bodyBytes = Buffer.from(bodyStr, "utf8");
     const ac = new AbortController();
@@ -120,48 +129,65 @@ export async function retrieveFromKnowledge(
 
     const rawBytes = await res.arrayBuffer();
     const rawStr = new TextDecoder("utf-8").decode(rawBytes);
-    const data = JSON.parse(rawStr) as {
+    const data = JSON.parse(rawStr) as Record<string, unknown> & {
       query?: { content?: string };
-      records?: Array<{
-        segment?: { content?: string; document?: { name?: string }; [key: string]: unknown };
-        content?: string;
-        text?: string;
-        score?: number;
-        [key: string]: unknown;
-      }>;
-      chunks?: Array<{ content?: string; text?: string }>;
-      data?: Array<{ content?: string; text?: string }>;
+      records?: Array<unknown>;
+      chunks?: Array<unknown>;
+      data?: Array<unknown>;
+      results?: Array<unknown>;
+      list?: Array<unknown>;
+      items?: Array<unknown>;
     };
-    const list =
-      data.records ??
-      data.chunks ??
-      data.data ??
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[knowledge-retrieve] 响应 JSON:", JSON.stringify(data, null, 2));
+    }
+    const list: unknown[] =
+      (data.records as unknown[] | undefined) ??
+      (data.chunks as unknown[] | undefined) ??
+      (data.data as unknown[] | undefined) ??
+      (data.results as unknown[] | undefined) ??
+      (data.list as unknown[] | undefined) ??
+      (data.items as unknown[] | undefined) ??
       (Array.isArray(data) ? data : []);
+
+    if (process.env.NODE_ENV !== "production" && list.length === 0 && Object.keys(data).length > 0) {
+      const usedKey = data.records !== undefined ? "records" : data.chunks !== undefined ? "chunks" : data.data !== undefined ? "data" : data.results !== undefined ? "results" : data.list !== undefined ? "list" : data.items !== undefined ? "items" : null;
+      console.log("[knowledge-retrieve] 响应根 keys:", Object.keys(data), usedKey ? `列表字段 "${usedKey}" 为空数组（检索无召回）` : "未找到列表字段 records/chunks/data/results/list/items");
+    }
 
     const chunksBefore = allChunks.length;
     if (list.length === 0) {
       successEmptyCount += 1;
     }
-    if (list.length > 0 && allChunks.length === 0 && datasetIds.indexOf(datasetId) === 0) {
-      const first = list[0] as Record<string, unknown>;
-      console.log("[knowledge-retrieve] 响应有 records 但未解析到 content，首条 keys:", Object.keys(first || {}));
-      if (first?.segment && typeof first.segment === "object") {
-        console.log("[knowledge-retrieve] 首条 segment keys:", Object.keys((first.segment as Record<string, unknown>) || {}));
-      }
-    }
 
     for (const item of list) {
       if (!item || typeof item !== "object") continue;
-      const content =
-        (item as { segment?: { content?: string } }).segment?.content ??
-        (item as { content?: string }).content ??
-        (item as { text?: string }).text;
+      const obj = item as Record<string, unknown>;
+      const seg = obj.segment;
+      let content: string | undefined;
+      if (seg && typeof seg === "object" && seg !== null) {
+        const segRecord = seg as Record<string, unknown>;
+        content = (segRecord["content"] ?? segRecord.content) as string | undefined;
+      }
+      if (typeof content !== "string" || !content.trim()) {
+        content =
+          (typeof obj.content === "string" ? obj.content : undefined) ??
+          (typeof obj.text === "string" ? obj.text : undefined) ??
+          (typeof obj.chunk_text === "string" ? obj.chunk_text : undefined) ??
+          (typeof obj.segment_content === "string" ? obj.segment_content : undefined);
+      }
       if (typeof content === "string" && content.trim()) {
         allChunks.push(content.trim());
       }
     }
     if (list.length > 0 && allChunks.length === chunksBefore) {
       successNoContentCount += 1;
+      if (process.env.NODE_ENV !== "production") {
+        const first = list[0] as Record<string, unknown>;
+        const seg = first?.segment as Record<string, unknown> | undefined;
+        const contentVal = seg?.content ?? seg?.["content"];
+        console.log("[knowledge-retrieve] 响应有 records 但未解析到 content，首条 segment.keys:", seg ? Object.keys(seg) : [], "content 类型:", typeof contentVal, typeof contentVal === "string" ? "长度=" + contentVal.length : "");
+      }
     }
   }
 

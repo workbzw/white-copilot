@@ -28,9 +28,23 @@ function getApiKey(): string {
   return key;
 }
 
+/** 是否在环境变量中开启了“关闭思考模式” */
+function isDisableThinkingEnvSet(): boolean {
+  const v = process.env.LLM_DISABLE_THINKING?.trim()?.toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/** 仅对支持思考模式的模型（如 R1/reasoner）传 thinking 参数，避免影响 V3.2 等其它模型 */
+function shouldSendDisableThinking(model: string): boolean {
+  if (!isDisableThinkingEnvSet()) return false;
+  const m = model.toLowerCase();
+  return m.includes("r1") || m.includes("reasoner");
+}
+
 /**
  * 获取 Chat 模型实例（OpenAI 兼容接口）。
  * 通过环境变量配置内部大模型：LLM_BASE_URL、LLM_MODEL、LLM_API_KEY。
+ * 设置 LLM_DISABLE_THINKING=1 且使用 R1 类模型时，会关闭思考模式；其它模型不会传该参数。
  */
 export function getSiliconFlowChatModel(options?: {
   model?: string;
@@ -41,6 +55,10 @@ export function getSiliconFlowChatModel(options?: {
   const apiKey = getApiKey();
   const baseURL = getBaseUrl();
   const maxTokens = options?.maxTokens ?? 4096;
+  const modelKwargs: Record<string, unknown> = {};
+  if (maxTokens > 0) modelKwargs.max_tokens = maxTokens;
+  if (shouldSendDisableThinking(model)) modelKwargs.thinking = { type: "disabled" };
+
   return new ChatOpenAI({
     model,
     apiKey,
@@ -50,8 +68,7 @@ export function getSiliconFlowChatModel(options?: {
     },
     temperature: options?.temperature ?? 0.7,
     maxTokens,
-    // 显式传入 max_tokens，避免部分兼容接口或流式场景下未正确传递导致默认 2048 截断
-    modelKwargs: maxTokens > 0 ? { max_tokens: maxTokens } : undefined,
+    modelKwargs: Object.keys(modelKwargs).length ? modelKwargs : undefined,
   });
 }
 

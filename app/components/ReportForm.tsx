@@ -56,7 +56,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [error, setError] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState("100");
   const [reportTemplate, setReportTemplate] = useState("公告模板");
-  const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("full");
+  const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("sections");
   const [referenceText, setReferenceText] = useState("");
   const [knowledgeDatasetOptions, setKnowledgeDatasetOptions] = useState<{ id: string; name: string }[]>([]);
   const [knowledgeConfigStatus, setKnowledgeConfigStatus] = useState<{
@@ -816,55 +816,6 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   上传后，AI 将优先引用资料内容
                 </p>
               </section>
-
-              <section className="mb-6">
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  本对话使用的知识库 <span className="text-gray-400">(可选)</span>
-                </label>
-                {knowledgeDatasetOptions.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {knowledgeDatasetOptions.map((opt) => {
-                        const isSelected = selectedKnowledgeDatasetIds.includes(opt.id);
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedKnowledgeDatasetIds((prev) =>
-                                prev.includes(opt.id)
-                                  ? prev.filter((id) => id !== opt.id)
-                                  : [...prev, opt.id]
-                              );
-                            }}
-                            className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
-                              isSelected
-                                ? "border-[#2563eb] bg-[#2563eb]/10 text-[#1d4ed8] shadow-sm ring-1 ring-[#2563eb]/20"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSelected && (
-                                <svg className="h-4 w-4 shrink-0 text-[#2563eb]" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                              {opt.name}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-400">
-                      可多选，生成正文时从所选知识库检索；不选则本对话不使用知识库
-                    </p>
-                  </>
-                ) : (
-                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
-                    暂无可选知识库
-                  </p>
-                )}
-              </section>
               </div>
               <div className="shrink-0 border-t border-gray-100 p-6 pt-4">
                 <button
@@ -995,6 +946,18 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 <div className="space-y-2">
                   <button
                     type="button"
+                    onClick={() => setBodyGenMode("sections")}
+                    className={`w-full rounded-lg border-2 px-3 py-2.5 text-left text-sm transition ${
+                      bodyGenMode === "sections"
+                        ? "border-[#2563eb] bg-blue-50/50 text-gray-800"
+                        : "border-gray-200 bg-gray-50/50 text-gray-600 hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="font-medium">快捷生成</span>
+                    <span className="mt-0.5 block text-xs text-gray-500">速度更快，章节相对独立</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setBodyGenMode("full")}
                     className={`w-full rounded-lg border-2 px-3 py-2.5 text-left text-sm transition ${
                       bodyGenMode === "full"
@@ -1004,18 +967,6 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   >
                     <span className="font-medium">全文连贯</span>
                     <span className="mt-0.5 block text-xs text-gray-500">一气呵成，前后一致，推荐</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBodyGenMode("sections")}
-                    className={`w-full rounded-lg border-2 px-3 py-2.5 text-left text-sm transition ${
-                      bodyGenMode === "sections"
-                        ? "border-[#2563eb] bg-blue-50/50 text-gray-800"
-                        : "border-gray-200 bg-gray-50/50 text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="font-medium">分节并发生成</span>
-                    <span className="mt-0.5 block text-xs text-gray-500">速度更快，章节相对独立</span>
                   </button>
                 </div>
               </section>

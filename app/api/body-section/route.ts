@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSiliconFlowChatModel } from "@/lib/siliconflow";
 import { retrieveFromKnowledge } from "@/lib/knowledge-retrieve";
+import { getSystemPersona } from "@/lib/prompt-persona";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 60;
@@ -98,15 +99,6 @@ export async function POST(request: NextRequest) {
         ? "若同时提供了本地引用文章与知识库检索结果，则重点引用本地文章，适当引用知识库作为补充。"
         : "若用户提供了重点引用资料，本节正文中必须引用其中的关键数据、表述或观点，应明确体现资料内容，不得完全脱离资料发挥。";
 
-    const systemPrompt = `你是一名专业报告撰写助手。请根据报告主题和大纲，只撰写其中某一节的内容。
-${styleHint}
-要求：
-1. 本节标题为：${sectionTitle}。不要在正文中重复该标题，只写标题下方的正文。
-2. 本节正文必须达到约 ${wordCountPerSection} 字（中文，含标点）。务必写满约 ${wordCountPerSection} 字后再结束，不要提前收尾；可略超但不得明显不足。字数按正文纯文字计算，不含 Markdown 符号；勿堆砌格式，以自然段落为主。
-3. 只输出本节正文，不要输出“好的”“以下是”等前缀，不要写其他节。
-4. 使用中文，内容专业、数据与逻辑可信。
-5. ${refRule}`;
-
     const referenceBlocks: string[] = [];
     if (hasLocalRef) {
       referenceBlocks.push(`【重点引用资料（本地文章，本节须重点引用）】\n\n${referenceText.normalize("NFC")}`);
@@ -114,6 +106,20 @@ ${styleHint}
     if (hasKnowledge) {
       referenceBlocks.push(`【知识库检索（可适当引用补充）】\n\n${knowledgeText.normalize("NFC")}`);
     }
+    const referencesSection = referenceBlocks.length ? `\n\n【以下为参考资料，撰写时须按要求引用】\n\n${referenceBlocks.join("\n\n")}` : "";
+
+    const systemPrompt = `${getSystemPersona()}
+
+---
+
+【本次任务】你作为上述研究员，根据报告主题和大纲，只撰写其中某一节的内容。
+${styleHint}
+要求：
+1. 本节标题为：${sectionTitle}。不要在正文中重复该标题，只写标题下方的正文。
+2. 本节正文必须达到约 ${wordCountPerSection} 字（中文，含标点）。务必写满约 ${wordCountPerSection} 字后再结束，不要提前收尾；可略超但不得明显不足。字数按正文纯文字计算，不含 Markdown 符号；勿堆砌格式，以自然段落为主。
+3. 只输出本节正文，不要输出“好的”“以下是”等前缀，不要写其他节。
+4. 使用中文，内容专业、数据与逻辑可信。
+5. ${refRule}${referencesSection}`;
 
     const outlineContext = outline.map((item, i) => `${i + 1}. ${item}`).join("\n");
     const userContent = [
@@ -121,7 +127,6 @@ ${styleHint}
       `字数要求：本节必须写满约 ${wordCountPerSection} 字（中文），不要提前结束，务必达到约 ${wordCountPerSection} 字。`,
       `报告模板：${reportTemplate}`,
       coreContent ? `背景与要点：\n${coreContent}` : "",
-      referenceBlocks.length ? referenceBlocks.join("\n\n") : "",
       `全文大纲（供参考）：\n${outlineContext}`,
       `请只撰写第 ${sectionIndex + 1} 节「${sectionTitle}」的正文，写满约 ${wordCountPerSection} 字后结束。`,
     ]
