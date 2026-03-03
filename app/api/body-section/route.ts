@@ -6,6 +6,28 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 export const maxDuration = 60;
 
+/** 去掉节标题前的「一、」「二、」「第一章」「1.」等序号，仅用于知识库检索 query，提高语义匹配 */
+function stripSectionNumeralPrefix(title: string): string {
+  const t = title.trim();
+  // 一、二、… 十一、十二、… 或 第一章、第一节、第一部分、第一项 等
+  const withPunct = t.replace(
+    /^\s*([一二三四五六七八九十百千零廿卅]+|[一二三四五六七八九十]+)\s*[、．.]\s*/u,
+    ""
+  );
+  if (withPunct !== t) return withPunct.trim();
+  const withChapter = t.replace(
+    /^\s*第[一二三四五六七八九十百千零廿卅\d]+[章部分节项条款]\s*[、．.]?\s*/u,
+    ""
+  );
+  if (withChapter !== t) return withChapter.trim();
+  // 1. 2. 1、 或 （一）（二）
+  const withArabic = t.replace(/^\s*\d+\s*[、．.]\s*/u, "");
+  if (withArabic !== t) return withArabic.trim();
+  const withParen = t.replace(/^\s*[（(][一二三四五六七八九十]+[)）]\s*/u, "");
+  if (withParen !== t) return withParen.trim();
+  return t;
+}
+
 /**
  * 按节生成报告正文，供前端并发生成多节使用。
  * POST body: { outline, topic, sectionIndex, wordCountPerSection?, reportTemplate?, coreContent?, styleMode? }
@@ -55,7 +77,9 @@ export async function POST(request: NextRequest) {
         ? rawIds.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
     type KnowledgeStatus = "used" | "no_api_key" | "no_dataset" | "retrieval_failed" | "no_results";
-    const sectionQuery = `${topic} ${sectionTitle}`.trim();
+    // 快速生成：知识库检索用「总标题 + 当前节标题（去掉一、二、等序号）」避免序号干扰语义匹配
+    const sectionTitleForQuery = stripSectionNumeralPrefix(sectionTitle);
+    const sectionQuery = `${topic} ${sectionTitleForQuery}`.trim();
     let knowledgeText = "";
     let knowledgeStatus: KnowledgeStatus = "no_dataset";
 

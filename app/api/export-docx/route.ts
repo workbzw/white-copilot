@@ -78,7 +78,21 @@ function forceSongFontInHtml(html: string): string {
   );
 }
 
-/** POST body: { html: string }. 返回 docx 文件流（富文本 HTML 转 Word） */
+/** 生成页眉 HTML（用于 Word 每页顶部） */
+function buildHeaderHtml(title: string): string {
+  const text = (title || "报告").trim().slice(0, 100);
+  return `<div style="font-family: ${SONG_FONT}; font-size: 9pt; color: #333;">${escapeHtml(text)}</div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** POST body: { html: string, title?: string }. 返回 docx 文件流（富文本 HTML 转 Word）；title 用作页眉。 */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -95,7 +109,9 @@ export async function POST(request: NextRequest) {
       // 用带宋体样式的容器包裹，确保导出 Word 全文为宋体（库的 font 选项对部分软件不生效）
       html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>body, body * { font-family: ${SONG_FONT} !important; }</style></head><body><div style="font-family: ${SONG_FONT}">${html}</div></body></html>`;
     }
-    let buffer = await HTMLtoDOCX(html, null, {
+    const headerTitle = typeof body.title === "string" ? body.title : "";
+    const headerHtml = buildHeaderHtml(headerTitle);
+    let buffer = await HTMLtoDOCX(html, headerHtml, {
       font: "SimSun",
       fontSize: 24,
       complexScriptFontSize: 24,

@@ -25,6 +25,39 @@ function sanitizeBodyError(msg: string): string {
   return t;
 }
 
+/** 去掉大纲条目前的「一、」「二、」「第一章」「1.」等序号，只保留正文 */
+function stripOutlineNumeralPrefix(title: string): string {
+  const t = title.trim();
+  const withPunct = t.replace(
+    /^\s*([一二三四五六七八九十百千零廿卅]+|[一二三四五六七八九十]+)\s*[、．.]\s*/u,
+    ""
+  );
+  if (withPunct !== t) return withPunct.trim();
+  const withChapter = t.replace(
+    /^\s*第[一二三四五六七八九十百千零廿卅\d]+[章部分节项条款]\s*[、．.]?\s*/u,
+    ""
+  );
+  if (withChapter !== t) return withChapter.trim();
+  const withArabic = t.replace(/^\s*\d+\s*[、．.]\s*/u, "");
+  if (withArabic !== t) return withArabic.trim();
+  const withParen = t.replace(/^\s*[（(][一二三四五六七八九十]+[)）]\s*/u, "");
+  if (withParen !== t) return withParen.trim();
+  return t;
+}
+
+/** 将序号改为 一、二、三、…（按当前顺序重新编号） */
+function renumberOutlineItems(items: string[]): string[] {
+  return items.map((item, i) => {
+    const content = stripOutlineNumeralPrefix(item) || item.trim() || "未命名";
+    const n = i + 1;
+    const numeral =
+      n <= 30
+        ? (["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十", "二十一", "二十二", "二十三", "二十四", "二十五", "二十六", "二十七", "二十八", "二十九", "三十"] as const)[n - 1]
+        : `${n}`;
+    return `${numeral}、${content}`;
+  });
+}
+
 type StyleMode = "ai" | "standard";
 
 export type ReportFormInitialData = {
@@ -232,11 +265,13 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
 
   const removeOutlineItem = (index: number) => {
     if (!outline) return;
-    setOutline(outline.filter((_, i) => i !== index));
+    const next = outline.filter((_, i) => i !== index);
+    setOutline(renumberOutlineItems(next));
   };
 
   const addOutlineItem = () => {
-    setOutline([...(outline ?? []), "新目录项"]);
+    const next = [...(outline ?? []), "新目录项"];
+    setOutline(renumberOutlineItems(next));
   };
 
   const updateOutlineItem = (index: number, value: string) => {
@@ -594,7 +629,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     const res = await fetch("/api/export-docx", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ html: body }),
+      body: JSON.stringify({ html: body, title: topic || undefined }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

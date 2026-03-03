@@ -8,10 +8,10 @@ export LLM_MODEL="deepseek_32b"
 export LLM_API_KEY="sk-sntgzyndiukafftszxatgcjfawdneobqkhravkgysxounyoh"
 # 知识库（可选）：与 agent-prd-nginx 同网络，用容器名访问
 export KNOWLEDGE_API_KEY="dataset-TXwZnSXne0jwEdjRoFTrJSK7"
-export KNOWLEDGE_BASE_URL="http://agent-prd-nginx"
+export KNOWLEDGE_BASE_URL="http://agent-prd-nginx/v1"
 # ========================================
 
-docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030301
+docker pull ccr.ccs.tencentyun.com/workbzw/write-copilot:030302
 docker stop write-copilot 2>/dev/null; docker rm write-copilot 2>/dev/null
 docker run -d -p 3080:3080 \
   --network agent-prd_default \
@@ -23,6 +23,6 @@ docker run -d -p 3080:3080 \
   -e "KNOWLEDGE_BASE_URL=$KNOWLEDGE_BASE_URL" \
   -v "$(pwd)/data:/app/data" \
   --name write-copilot \
-  ccr.ccs.tencentyun.com/workbzw/write-copilot:030301
+  ccr.ccs.tencentyun.com/workbzw/write-copilot:030302
 
 echo "已启动 write-copilot，访问 http://$(hostname -I | awk '{print $1}'):3080"
