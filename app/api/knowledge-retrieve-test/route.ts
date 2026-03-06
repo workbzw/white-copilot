@@ -37,7 +37,7 @@ async function runTest(query: string) {
     });
   }
 
-  const text = await retrieveFromKnowledge(query, { topK: 5 });
+  const text = await retrieveFromKnowledge(query, { topK: 6 });
   const recordCount = text ? text.split("\n\n---\n\n").length : 0;
   const totalChars = text.length;
   const preview = text ? text.slice(0, 300) + (text.length > 300 ? "…" : "") : "";

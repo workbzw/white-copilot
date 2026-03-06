@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
     }
     html = forceSongFontInHtml(html);
     if (!html.includes("<html")) {
-      // 用带宋体样式的容器包裹，确保导出 Word 全文为宋体（库的 font 选项对部分软件不生效）
-      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>body, body * { font-family: ${SONG_FONT} !important; }</style></head><body><div style="font-family: ${SONG_FONT}">${html}</div></body></html>`;
+      // 用带宋体样式的容器包裹，确保导出 Word 全文为宋体；段落统一首行缩进两格
+      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>body, body * { font-family: ${SONG_FONT} !important; } p { text-indent: 2em; }</style></head><body><div style="font-family: ${SONG_FONT}">${html}</div></body></html>`;
     }
     const headerTitle = typeof body.title === "string" ? body.title : "";
     const headerHtml = buildHeaderHtml(headerTitle);

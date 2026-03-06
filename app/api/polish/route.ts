@@ -25,7 +25,8 @@ const ACTION_PROMPTS: Record<
 };
 
 /**
- * POST body: { text: string, action?: "polish" | "simplify" | "expand" }
+ * POST body: { text: string, action?: "polish" | "simplify" | "expand", targetWordCount?: number }
+ * 当 action 为 simplify/expand 时可传 targetWordCount，按目标字数精简或扩充。
  * 返回 JSON: { text: string } 或 { error: string }
  */
 export async function POST(request: NextRequest) {
@@ -60,10 +61,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { system, userPrefix } = ACTION_PROMPTS[action];
+    const rawTarget = body.targetWordCount;
+    const targetWordCount =
+      typeof rawTarget === "number" && Number.isInteger(rawTarget) && rawTarget > 0
+        ? rawTarget
+        : undefined;
+
+    let { system, userPrefix } = ACTION_PROMPTS[action];
+    if (
+      targetWordCount != null &&
+      (action === "simplify" || action === "expand")
+    ) {
+      const wordHint =
+        action === "simplify"
+          ? `输出字数严格控制在约 ${targetWordCount} 字：精简表述、去掉冗余，使结果接近该字数（按正文纯文字计，不含空白）。`
+          : `输出字数严格控制在约 ${targetWordCount} 字：在保持原意的基础上扩充、补充说明或举例，使结果接近该字数（按正文纯文字计，不含空白）。`;
+      system = `${system}\n\n【字数要求】${wordHint}`;
+    }
+    const maxTokens =
+      targetWordCount != null
+        ? Math.min(4096, Math.max(512, Math.ceil(targetWordCount * 1.5)))
+        : 2048;
+
     const llm = getSiliconFlowChatModel({
       temperature: 0.4,
-      maxTokens: 2048,
+      maxTokens,
     });
 
     const messages = [

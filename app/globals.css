@@ -22,6 +22,19 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
+/* 正文段落统一首行缩进两格 */
+.markdown-body p {
+  text-indent: 2em;
+}
+
+/* 正文区字体统一，不忽大忽小 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body li {
+  font-size: inherit;
+}
+
 /* 隐藏原生 file input，用自定义按钮触发 */
 .input-file-hidden {
   position: absolute;

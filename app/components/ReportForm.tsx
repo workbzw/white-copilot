@@ -45,6 +45,17 @@ function stripOutlineNumeralPrefix(title: string): string {
   return t;
 }
 
+/** 校验 return_url 是否安全（仅允许 http/https，防止开放重定向） */
+function isValidReturnUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** 将序号改为 一、二、三、…（按当前顺序重新编号） */
 function renumberOutlineItems(items: string[]): string[] {
   return items.map((item, i) => {
@@ -87,9 +98,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [outline, setOutline] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wordCount, setWordCount] = useState("100");
+  const [wordCount, setWordCount] = useState("10000");
   const [reportTemplate, setReportTemplate] = useState("公告模板");
-  const [bodyGenMode, setBodyGenMode] = useState<"full" | "sections">("sections");
   const [referenceText, setReferenceText] = useState("");
   const [knowledgeDatasetOptions, setKnowledgeDatasetOptions] = useState<{ id: string; name: string }[]>([]);
   const [knowledgeConfigStatus, setKnowledgeConfigStatus] = useState<{
@@ -110,6 +120,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   const [isBodyGenerating, setIsBodyGenerating] = useState(false);
   const [bodyCompleted, setBodyCompleted] = useState(false);
   const [aiToolLoading, setAiToolLoading] = useState<"polish" | "simplify" | "expand" | null>(null);
+  /** 精简/扩充弹窗：填写目标字数，并显示当前字数作为参考 */
+  const [wordCountDialog, setWordCountDialog] = useState<{
+    action: "simplify" | "expand";
+    currentCount: number;
+    selectedText: string;
+  } | null>(null);
+  const [wordCountDialogTarget, setWordCountDialogTarget] = useState("");
+  const [wordCountDialogError, setWordCountDialogError] = useState<string | null>(null);
+  const wordCountDialogRangeRef = useRef<Range | null>(null);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [saveMdLoading, setSaveMdLoading] = useState(false);
   const [saveMdError, setSaveMdError] = useState<string | null>(null);
@@ -122,7 +141,10 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     justifyRight: false,
     justifyFull: false,
   });
+  /** 返回按钮：'url' 表示跳转到 returnUrl，'history' 表示 history.back()，null 表示不显示 */
+  const [returnAction, setReturnAction] = useState<{ type: "url"; url: string } | { type: "history" } | null>(null);
   const bodyAbortRef = useRef<AbortController | null>(null);
+  const startBodyStreamRef = useRef<(() => Promise<void>) | null>(null);
   const bodyShouldStartRef = useRef(true);
   const bodyContentScrollRef = useRef<HTMLDivElement>(null);
   const previewEditableRef = useRef<HTMLDivElement>(null);
@@ -134,10 +156,36 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   useEffect(() => {
     outlineRef.current = outline ?? [];
   }, [outline]);
+
+  /** 计算返回按钮：优先 return_url 参数，其次 referrer，最后 history.back() */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const returnUrlParam = params.get("return_url") ?? params.get("returnUrl");
+    if (returnUrlParam && isValidReturnUrl(returnUrlParam)) {
+      setReturnAction({ type: "url", url: returnUrlParam });
+      return;
+    }
+    const referrer = document.referrer;
+    const origin = window.location.origin;
+    if (referrer && !referrer.startsWith(origin)) {
+      try {
+        const u = new URL(referrer);
+        if (u.protocol === "http:" || u.protocol === "https:") {
+          setReturnAction({ type: "url", url: referrer });
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (window.history.length > 1) {
+      setReturnAction({ type: "history" });
+    }
+  }, []);
+
   /** 点击格式按钮时保存的选区，避免点击导致选区丢失 */
   const savedRangeRef = useRef<Range | null>(null);
-
-  const CONCURRENCY = 3;
 
   /** 根据当前选区更新工具栏按钮高亮 */
   const updateToolbarState = useCallback(() => {
@@ -227,18 +275,15 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     });
   }, []);
 
-  /** 可选知识库列表与配置状态（用于本对话选择不同知识库） */
+  /** 可选知识库列表与配置状态（用于本对话选择不同知识库）；查询到后默认全选且不允许取消 */
   useEffect(() => {
     fetch("/api/knowledge-datasets")
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setKnowledgeDatasetOptions(data);
-          setKnowledgeConfigStatus(null);
-        } else {
-          setKnowledgeDatasetOptions(data?.options ?? []);
-          setKnowledgeConfigStatus(data?.configStatus ?? null);
-        }
+        const options = Array.isArray(data) ? data : (data?.options ?? []);
+        setKnowledgeDatasetOptions(options);
+        setKnowledgeConfigStatus(Array.isArray(data) ? null : (data?.configStatus ?? null));
+        setSelectedKnowledgeDatasetIds(options.map((o: { id: string }) => o.id));
       })
       .catch(() => {
         setKnowledgeDatasetOptions([]);
@@ -260,7 +305,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       setReferenceText(initialData.referenceText.trim());
     }
     if (Array.isArray(initialData.knowledgeDatasetIds)) {
-      setSelectedKnowledgeDatasetIds(initialData.knowledgeDatasetIds.filter((id) => typeof id === "string"));
+      setSelectedKnowledgeDatasetIds(initialData.knowledgeDatasetIds.filter((id): id is string => typeof id === "string"));
     }
     if (initialData.body?.trim()) {
       addToContentHistory(initialData.body);
@@ -311,169 +356,93 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     setBodyProgress(0);
     setBodyCompleted(false);
     setIsBodyGenerating(true);
-    setBodySections(bodyGenMode === "sections" ? outline.map(() => "") : []);
+    const initialSections = outline.map(() => "");
+    setBodySections(initialSections);
+    bodySectionsRef.current = [...initialSections];
+    outlineLengthRef.current = outline.length;
 
-    // 超时与目标字数/节数挂钩，避免长文未生成完就因连接超时被断开（约 20 字/秒预留，上限 10 分钟）
-    const TEN_MIN_MS = 10 * 60 * 1000;
-    const totalWords = Math.max(100, parseInt(wordCount, 10) || 3000);
-    const timeoutMs =
-      bodyGenMode === "full"
-        ? Math.min(TEN_MIN_MS, Math.max(90_000, Math.ceil((totalWords / 20) * 1000)))
-        : Math.max(90_000, Math.min(TEN_MIN_MS, outline.length * 70 * 1000));
+    const totalWords = Math.max(100, parseInt(wordCount, 10) || 10000);
+    const wordCountPerSection = Math.max(20, Math.floor(totalWords / outline.length));
+    const TWENTY_MIN_MS = 20 * 60 * 1000;
+    const MS_PER_SECTION = 180 * 1000;
+    const timeoutMs = Math.min(TWENTY_MIN_MS, Math.max(120_000, outline.length * MS_PER_SECTION));
     const timeoutId = setTimeout(() => {
-      if (bodyAbortRef.current === ac) {
-        ac.abort();
-      }
+      if (bodyAbortRef.current === ac) ac.abort();
     }, timeoutMs);
 
-    if (bodyGenMode === "full") {
-      try {
-        const res = await fetch("/api/body", {
+    const payloadBase = {
+      outline,
+      topic,
+      wordCountPerSection,
+      reportTemplate,
+      coreContent: coreContent || undefined,
+      styleMode,
+      referenceText: referenceText || undefined,
+      knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
+    };
+
+    try {
+      for (let index = 0; index < outline.length; index++) {
+        if (ac.signal.aborted) break;
+        const previousSectionsContent =
+          index > 0
+            ? buildFullTextFromSections(bodySectionsRef.current.slice(0, index), outline)
+            : "";
+        const res = await fetch("/api/body-section", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            outline,
-            topic,
-            wordCount,
-            reportTemplate,
-            coreContent: coreContent || undefined,
-            styleMode,
-            referenceText: referenceText || undefined,
-            knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
+            ...payloadBase,
+            sectionIndex: index,
+            previousSectionsContent: previousSectionsContent || undefined,
           }),
           signal: ac.signal,
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          const raw = (data.error as string) || "生成失败，请重试";
-          setBodyContent(sanitizeBodyError(raw));
-          clearTimeout(timeoutId);
-          setIsBodyGenerating(false);
-          return;
+          setBodyContent(sanitizeBodyError((data.error as string) || "生成失败，请重试"));
+          break;
         }
-        const knowledgeStatusLabel: Record<string, string> = {
-          used: "已使用",
-          no_api_key: "未配置 API Key",
-          no_dataset: "未选择知识库",
-          retrieval_failed: "检索失败",
-          no_results: "检索无结果",
-        };
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         if (!reader) {
           setBodyContent("生成失败，请重试");
-          clearTimeout(timeoutId);
-          setIsBodyGenerating(false);
-          return;
+          break;
         }
-        const targetWords = Math.max(100, parseInt(wordCount, 10) || 3000);
         let buffer = "";
-        let text = "";
+        let sectionText = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          text += buffer;
+          sectionText += buffer;
           buffer = "";
-          setBodyContent(text);
-          // 按已生成字数/目标字数动态进度（中文约 1 字=1 字符）
-          const p = Math.min(99, Math.round((text.length / targetWords) * 100));
-          setBodyProgress(p);
+          if (index < outlineLengthRef.current) {
+            bodySectionsRef.current[index] = sectionText;
+            setBodySections([...bodySectionsRef.current]);
+          }
         }
-        if (buffer) text += buffer;
-        setBodyContent(text);
+        if (buffer) {
+          sectionText += buffer;
+          if (index < outlineLengthRef.current) {
+            bodySectionsRef.current[index] = sectionText;
+            setBodySections([...bodySectionsRef.current]);
+          }
+        }
+        const totalLength = bodySectionsRef.current.reduce((sum, s) => sum + (s?.length ?? 0), 0);
+        setBodyProgress(Math.min(99, Math.round((totalLength / totalWords) * 100)));
+      }
+      if (ac.signal.aborted) {
+        setBodyContent((prev) => prev || "[已终止生成]");
+      } else {
+        const fullText = buildFullTextFromSections(bodySectionsRef.current, outlineRef.current);
+        if (fullText) {
+          setBodyContent(fullText);
+          addToContentHistory(fullText);
+        }
         setBodyProgress(100);
         setBodyCompleted(true);
-        addToContentHistory(text);
-      } catch (e) {
-        if ((e as Error).name === "AbortError") {
-          setBodyContent((prev) => prev || "[已终止生成]");
-        } else {
-          const msg = e instanceof Error ? e.message : "生成异常，请重试";
-          setBodyContent((prev) => prev || sanitizeBodyError(msg));
-        }
-      } finally {
-        clearTimeout(timeoutId);
-        setIsBodyGenerating(false);
-        bodyAbortRef.current = null;
       }
-      return;
-    }
-
-    const totalWordCount = parseInt(wordCount, 10) || 100;
-    const wordCountPerSection = Math.max(20, Math.floor(totalWordCount / outline.length));
-    const results = outline.map(() => "");
-    bodySectionsRef.current = results;
-    outlineLengthRef.current = outline.length;
-    let completedCount = 0;
-    const runSectionStream = async (index: number): Promise<void> => {
-      const res = await fetch("/api/body-section", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          outline,
-          topic,
-          sectionIndex: index,
-          wordCountPerSection,
-          reportTemplate,
-          coreContent: coreContent || undefined,
-          styleMode,
-          referenceText: referenceText || undefined,
-          knowledgeDatasetIds: selectedKnowledgeDatasetIds.length ? selectedKnowledgeDatasetIds : undefined,
-        }),
-        signal: ac.signal,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data.error as string) || `第 ${index + 1} 节生成失败`);
-      }
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("无法读取响应流");
-      let buffer = "";
-      let sectionText = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        sectionText += buffer;
-        buffer = "";
-        if (index < outlineLengthRef.current) {
-          bodySectionsRef.current[index] = sectionText;
-          setBodySections([...bodySectionsRef.current]);
-        }
-      }
-      if (buffer) {
-        sectionText += buffer;
-        if (index < outlineLengthRef.current) {
-          bodySectionsRef.current[index] = sectionText;
-          setBodySections([...bodySectionsRef.current]);
-        }
-      }
-      completedCount += 1;
-      // 按已生成总字数/目标总字数动态进度（与字数挂钩，不再固定按节数）
-      const totalLength = bodySectionsRef.current.reduce((sum, s) => sum + (s?.length ?? 0), 0);
-      setBodyProgress(Math.min(99, Math.round((totalLength / totalWordCount) * 100)));
-    };
-
-    try {
-      let nextIndex = 0;
-      const runNext = async (): Promise<void> => {
-        while (nextIndex < outline.length && !ac.signal.aborted) {
-          const i = nextIndex++;
-          await runSectionStream(i);
-        }
-      };
-      const workers = Array.from(
-        { length: Math.min(CONCURRENCY, outline.length) },
-        () => runNext()
-      );
-      await Promise.all(workers);
-      if (ac.signal.aborted) return;
-      const fullText = buildFullTextFromSections(bodySectionsRef.current, outlineRef.current);
-      if (fullText) addToContentHistory(fullText);
-      setBodyProgress(100);
-      setBodyCompleted(true);
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         setBodyContent((prev) => prev || "[已终止生成]");
@@ -486,7 +455,9 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       setIsBodyGenerating(false);
       bodyAbortRef.current = null;
     }
-  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, bodyGenMode, referenceText, selectedKnowledgeDatasetIds, buildFullTextFromSections, addToContentHistory]);
+  }, [outline, topic, wordCount, reportTemplate, coreContent, styleMode, referenceText, selectedKnowledgeDatasetIds, buildFullTextFromSections, addToContentHistory]);
+
+  startBodyStreamRef.current = startBodyStream;
 
   useEffect(() => {
     if (step !== "body") {
@@ -499,12 +470,12 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
       topic.trim()
     ) {
       bodyShouldStartRef.current = false;
-      startBodyStream();
+      startBodyStreamRef.current?.();
     }
     return () => {
       bodyAbortRef.current?.abort();
     };
-  }, [step, outline, topic, startBodyStream]);
+  }, [step, outline, topic]);
 
   useEffect(() => {
     if (!bodyContentScrollRef.current) return;
@@ -587,22 +558,29 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     [addToContentHistory, updateToolbarState]
   );
 
+  /** 正文字数：汉字与标点等，不含空白 */
+  const countChars = useCallback((s: string) => s.replace(/\s/g, "").length, []);
+
   const runAiTool = useCallback(
     async (action: "polish" | "simplify" | "expand") => {
       const el = previewEditableRef.current;
       if (!el) return;
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) {
-        return;
-      }
+      if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
-      if (!el.contains(range.commonAncestorContainer)) {
-        return;
-      }
+      if (!el.contains(range.commonAncestorContainer)) return;
       const selectedText = sel.toString().trim();
-      if (!selectedText) {
+      if (!selectedText) return;
+
+      if (action === "simplify" || action === "expand") {
+        const currentCount = countChars(selectedText);
+        wordCountDialogRangeRef.current = range.cloneRange();
+        setWordCountDialog({ action, currentCount, selectedText });
+        setWordCountDialogTarget(String(currentCount));
+        setWordCountDialogError(null);
         return;
       }
+
       setAiToolLoading(action);
       try {
         const res = await fetch("/api/polish", {
@@ -611,9 +589,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
           body: JSON.stringify({ text: selectedText, action }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          return;
-        }
+        if (!res.ok) return;
         const resultText = (data as { text?: string }).text ?? "";
         if (!resultText) return;
         range.deleteContents();
@@ -624,6 +600,49 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         addToContentHistory(el.innerHTML || "");
       } finally {
         setAiToolLoading(null);
+      }
+    },
+    [addToContentHistory, countChars]
+  );
+
+  /** 精简/扩充按目标字数执行（弹窗确认后调用） */
+  const applyWordCountTool = useCallback(
+    async (
+      action: "simplify" | "expand",
+      selectedText: string,
+      targetWordCount: number,
+      range: Range
+    ) => {
+      const el = previewEditableRef.current;
+      if (!el) return;
+      setAiToolLoading(action);
+      try {
+        const res = await fetch("/api/polish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: selectedText,
+            action,
+            targetWordCount,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const resultText = (data as { text?: string }).text ?? "";
+        if (!resultText) return;
+        range.deleteContents();
+        range.insertNode(document.createTextNode(resultText));
+        range.collapse(false);
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        addToContentHistory(el.innerHTML || "");
+      } finally {
+        setAiToolLoading(null);
+        setWordCountDialog(null);
+        wordCountDialogRangeRef.current = null;
       }
     },
     [addToContentHistory]
@@ -750,9 +769,37 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#f5f7fa]">
+      {/* 生成大纲时全屏 loading */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 rounded-2xl bg-white px-10 py-8 shadow-xl">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#2563eb]/30 border-t-[#2563eb]" />
+            <p className="text-sm font-medium text-gray-800">正在生成大纲…</p>
+          </div>
+        </div>
+      )}
       {/* 顶部导航 */}
       <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
         <div className="flex items-center gap-4">
+          {returnAction && (
+            <button
+              type="button"
+              onClick={() => {
+                if (returnAction.type === "url") {
+                  window.location.href = returnAction.url;
+                } else {
+                  window.history.back();
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-800"
+              title="返回上一页"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              返回
+            </button>
+          )}
           <h1 className="text-lg font-semibold text-gray-800">
             AI 智能写作平台
           </h1>
@@ -950,9 +997,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                             type="button"
                             onClick={() => {
                               setSelectedKnowledgeDatasetIds((prev) =>
-                                prev.includes(opt.id)
-                                  ? prev.filter((id) => id !== opt.id)
-                                  : [...prev, opt.id]
+                                prev.includes(opt.id) ? prev : [...prev, opt.id]
                               );
                             }}
                             className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
@@ -973,7 +1018,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                         );
                       })}
                     </div>
-                    <p className="mt-1 text-xs text-gray-400">可多选；不选则本对话不使用知识库</p>
+                    <p className="mt-1 text-xs text-gray-400">已默认全选，不可取消</p>
                   </>
                 ) : (
                   <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
@@ -992,38 +1037,6 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   onChange={(e) => setWordCount(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
                 />
-              </section>
-
-              <section className="mb-4">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  正文生成方式
-                </label>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setBodyGenMode("sections")}
-                    className={`w-full rounded-lg border-2 px-3 py-2.5 text-left text-sm transition ${
-                      bodyGenMode === "sections"
-                        ? "border-[#2563eb] bg-blue-50/50 text-gray-800"
-                        : "border-gray-200 bg-gray-50/50 text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="font-medium">快捷生成</span>
-                    <span className="mt-0.5 block text-xs text-gray-500">速度更快，章节相对独立</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBodyGenMode("full")}
-                    className={`w-full rounded-lg border-2 px-3 py-2.5 text-left text-sm transition ${
-                      bodyGenMode === "full"
-                        ? "border-[#2563eb] bg-blue-50/50 text-gray-800"
-                        : "border-gray-200 bg-gray-50/50 text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="font-medium">全文连贯</span>
-                    <span className="mt-0.5 block text-xs text-gray-500">一气呵成，前后一致，推荐</span>
-                  </button>
-                </div>
               </section>
 
               <section className="mb-6">
@@ -1241,7 +1254,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 ref={bodyContentScrollRef}
                 className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-gray-200 bg-gray-50/30 p-4"
               >
-                <div className="markdown-body font-sans text-sm leading-relaxed text-gray-800 [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-base [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_strong]:font-semibold">
+                <div className="markdown-body font-sans text-sm leading-relaxed text-gray-800 [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_p]:[text-indent:2em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold">
                   {(() => {
                     const rawText =
                       isBodyGenerating && bodySections.length
@@ -1314,6 +1327,99 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   ① AI 仅供参考，请自行审核修改
                 </span>
               </div>
+              {wordCountDialog && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="word-count-dialog-title"
+                >
+                  <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-5 shadow-lg">
+                    <h2
+                      id="word-count-dialog-title"
+                      className="mb-3 text-base font-medium text-gray-800"
+                    >
+                      {wordCountDialog.action === "simplify" ? "精简" : "扩充"}：按目标字数
+                    </h2>
+                    <p className="mb-2 text-sm text-gray-600">
+                      当前选中：<strong>{wordCountDialog.currentCount}</strong> 字
+                    </p>
+                    <label className="mb-1 block text-sm text-gray-600">
+                      目标字数
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={wordCountDialogTarget}
+                      onChange={(e) => {
+                        setWordCountDialogTarget(e.target.value);
+                        setWordCountDialogError(null);
+                      }}
+                      className="mb-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="请输入目标字数"
+                    />
+                    {wordCountDialogError && (
+                      <p className="mb-2 text-xs text-red-600">
+                        {wordCountDialogError}
+                      </p>
+                    )}
+                    <p className="mb-4 text-xs text-gray-500">
+                      精简时目标须小于当前字数，扩充时目标须大于当前字数
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => {
+                          setWordCountDialog(null);
+                          setWordCountDialogError(null);
+                          wordCountDialogRangeRef.current = null;
+                        }}
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                        disabled={!!aiToolLoading}
+                        onClick={async () => {
+                          const raw = wordCountDialogTarget.trim();
+                          const target = raw ? parseInt(raw, 10) : NaN;
+                          if (!Number.isInteger(target) || target < 1) {
+                            setWordCountDialogError("请输入有效的目标字数");
+                            return;
+                          }
+                          const { action: dialogAction, currentCount } = wordCountDialog;
+                          if (dialogAction === "simplify" && target >= currentCount) {
+                            setWordCountDialogError("精简时目标字数须小于当前字数");
+                            return;
+                          }
+                          if (dialogAction === "expand" && target <= currentCount) {
+                            setWordCountDialogError("扩充时目标字数须大于当前字数");
+                            return;
+                          }
+                          setWordCountDialogError(null);
+                          const range = wordCountDialogRangeRef.current;
+                          if (!range) {
+                            setWordCountDialog(null);
+                            return;
+                          }
+                          await applyWordCountTool(
+                            wordCountDialog.action,
+                            wordCountDialog.selectedText,
+                            target,
+                            range
+                          );
+                        }}
+                      >
+                        {aiToolLoading === wordCountDialog.action
+                          ? "处理中..."
+                          : "确定"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-gray-100 pb-2">
                 <select
                   className="hidden rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
@@ -1427,7 +1533,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   suppressContentEditableWarning
                   onFocus={updateToolbarState}
                   onBlur={handlePreviewEditableBlur}
-                  className="markdown-body p-4 font-sans text-sm leading-relaxed text-gray-800 outline-none [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-base [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_strong]:font-semibold empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                  className="markdown-body p-4 font-sans text-sm leading-relaxed text-gray-800 outline-none [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_p]:[text-indent:2em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
                   data-placeholder="暂无内容，请先生成正文。"
                 />
               </div>
