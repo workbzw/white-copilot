@@ -12,6 +12,9 @@ const STEPS = [
   { id: "optimize", label: "内容优化" },
 ] as const;
 
+/** 暂时隐藏知识库选择组件，改为 true 可恢复展示（功能与数据流保留） */
+const SHOW_KNOWLEDGE_SECTION = false;
+
 /** 技术性错误（如 URL、fetch）不展示在正文框，改为友好提示 */
 function sanitizeBodyError(msg: string): string {
   if (!msg || typeof msg !== "string") return "生成失败，请重试";
@@ -986,53 +989,57 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 </button>
               </div>
 
-              <section className="mb-4">
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  本对话使用的知识库
-                </label>
-                {knowledgeDatasetOptions.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {knowledgeDatasetOptions.map((opt) => {
-                        const isSelected = selectedKnowledgeDatasetIds.includes(opt.id);
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedKnowledgeDatasetIds((prev) =>
-                                prev.includes(opt.id) ? prev : [...prev, opt.id]
-                              );
-                            }}
-                            className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
-                              isSelected
-                                ? "border-[#2563eb] bg-[#2563eb]/10 text-[#1d4ed8] shadow-sm ring-1 ring-[#2563eb]/20"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {isSelected && (
-                                <svg className="h-4 w-4 shrink-0 text-[#2563eb]" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                              {opt.name}
-                            </span>
-                          </button>
-                        );
-                      })}
+              {SHOW_KNOWLEDGE_SECTION && (
+              {SHOW_KNOWLEDGE_SECTION && (
+                <section className="mb-4">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    本对话使用的知识库
+                  </label>
+                  {knowledgeDatasetOptions.length > 0 ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {knowledgeDatasetOptions.map((opt) => {
+                          const isSelected = selectedKnowledgeDatasetIds.includes(opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedKnowledgeDatasetIds((prev) =>
+                                  prev.includes(opt.id) ? prev : [...prev, opt.id]
+                                );
+                              }}
+                              className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
+                                isSelected
+                                  ? "border-[#2563eb] bg-[#2563eb]/10 text-[#1d4ed8] shadow-sm ring-1 ring-[#2563eb]/20"
+                                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {isSelected && (
+                                  <svg className="h-4 w-4 shrink-0 text-[#2563eb]" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                                {opt.name}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">已默认全选，不可取消</p>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                      <p className="font-medium">暂无可选知识库</p>
+                      {knowledgeUnavailableReason && (
+                        <p className="mt-1 text-xs text-gray-500">{knowledgeUnavailableReason}</p>
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-gray-400">已默认全选，不可取消</p>
-                  </>
-                ) : (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                    <p className="font-medium">暂无可选知识库</p>
-                    {knowledgeUnavailableReason && (
-                      <p className="mt-1 text-xs text-gray-500">{knowledgeUnavailableReason}</p>
-                    )}
-                  </div>
-                )}
-              </section>
+                  )}
+                </section>
+              )}
+              )}
 
               <section className="mb-4">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
