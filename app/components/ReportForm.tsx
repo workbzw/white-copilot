@@ -990,7 +990,6 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
               </div>
 
               {SHOW_KNOWLEDGE_SECTION && (
-              {SHOW_KNOWLEDGE_SECTION && (
                 <section className="mb-4">
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     本对话使用的知识库
@@ -1038,7 +1037,6 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     </div>
                   )}
                 </section>
-              )}
               )}
 
               <section className="mb-4">
