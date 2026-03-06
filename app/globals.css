@@ -22,10 +22,7 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* 正文段落统一首行缩进两格 */
-.markdown-body p {
-  text-indent: 2em;
-}
+/* 正文段落首行缩进由 AI 在段首加全角空格「　　」实现 */
 
 /* 正文区字体统一，不忽大忽小 */
 .markdown-body h1,

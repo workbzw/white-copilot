@@ -48,7 +48,9 @@ async function postProcessDocx(buffer: Buffer): Promise<Buffer> {
       .replace(/w:hAnsi="[^"]*"/g, `w:hAnsi="${DOCX_FONT}"`)
       .replace(/w:eastAsia="[^"]*"/g, `w:eastAsia="${DOCX_FONT}"`)
       .replace(/w:cs="[^"]*"/g, `w:cs="${DOCX_FONT}"`);
-    if (path === "word/document.xml") xml = removeLeadingEmptyParagraphs(xml);
+    if (path === "word/document.xml") {
+      xml = removeLeadingEmptyParagraphs(xml);
+    }
     zip.file(path, xml);
   }
   return Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
@@ -105,10 +107,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少 html 内容" }, { status: 400 });
     }
     html = forceSongFontInHtml(html);
-    if (!html.includes("<html")) {
-      // 用带宋体样式的容器包裹，确保导出 Word 全文为宋体；段落统一首行缩进两格
-      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>body, body * { font-family: ${SONG_FONT} !important; } p { text-indent: 2em; }</style></head><body><div style="font-family: ${SONG_FONT}">${html}</div></body></html>`;
+    // 统一提取 body 内容后包裹，确保无论来源如何，都应用宋体与首行缩进
+    let bodyContent = html;
+    if (html.includes("<html")) {
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      bodyContent = bodyMatch ? bodyMatch[1].trim() : html;
     }
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>body, body * { font-family: ${SONG_FONT} !important; }</style></head><body><div style="font-family: ${SONG_FONT}">${bodyContent}</div></body></html>`;
     const headerTitle = typeof body.title === "string" ? body.title : "";
     const headerHtml = buildHeaderHtml(headerTitle);
     let buffer = await HTMLtoDOCX(html, headerHtml, {

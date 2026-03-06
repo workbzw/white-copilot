@@ -14,6 +14,8 @@ const STEPS = [
 
 /** 暂时隐藏知识库选择组件，改为 true 可恢复展示（功能与数据流保留） */
 const SHOW_KNOWLEDGE_SECTION = false;
+/** 暂时隐藏 AI 智能生成 / 标准公文样式 选择卡片 */
+const SHOW_STYLE_MODE_SELECTION = false;
 
 /** 技术性错误（如 URL、fetch）不展示在正文框，改为友好提示 */
 function sanitizeBodyError(msg: string): string {
@@ -1163,7 +1165,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
             </div>
           ) : step === "outline" ? (
             <>
-              <div className="flex flex-col items-center justify-center py-12">
+              <div className="flex flex-1 flex-col items-center justify-center py-12">
                 <div className="relative mb-4">
                   <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-50">
                     <svg
@@ -1192,62 +1194,64 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 </p>
               </div>
 
-              <div className="mt-8 grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setStyleMode("ai")}
-                  className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition ${
-                    styleMode === "ai"
-                      ? "border-[#2563eb] bg-blue-50/50"
-                      : "border-gray-200 bg-gray-50/50 hover:border-gray-300"
-                  }`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
-                    ✦
-                  </span>
-                  <div>
-                    <div className="font-medium text-gray-800">
-                      AI 智能生成
+              {SHOW_STYLE_MODE_SELECTION && (
+                <div className="mt-8 grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setStyleMode("ai")}
+                    className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition ${
+                      styleMode === "ai"
+                        ? "border-[#2563eb] bg-blue-50/50"
+                        : "border-gray-200 bg-gray-50/50 hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                      ✦
+                    </span>
+                    <div>
+                      <div className="font-medium text-gray-800">
+                        AI 智能生成
+                      </div>
+                      <div className="mt-0.5 text-sm text-gray-500">
+                        基于大模型技术
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-sm text-gray-500">
-                      基于大模型技术
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStyleMode("standard")}
+                    className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition ${
+                      styleMode === "standard"
+                        ? "border-[#2563eb] bg-blue-50/50"
+                        : "border-gray-200 bg-gray-50/50 hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-600">
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                        />
+                      </svg>
+                    </span>
+                    <div>
+                      <div className="font-medium text-gray-800">
+                        标准公文样式
+                      </div>
+                      <div className="mt-0.5 text-sm text-gray-500">
+                        符合规范要求
+                      </div>
                     </div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStyleMode("standard")}
-                  className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition ${
-                    styleMode === "standard"
-                      ? "border-[#2563eb] bg-blue-50/50"
-                      : "border-gray-200 bg-gray-50/50 hover:border-gray-300"
-                  }`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-600">
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                      />
-                    </svg>
-                  </span>
-                  <div>
-                    <div className="font-medium text-gray-800">
-                      标准公文样式
-                    </div>
-                    <div className="mt-0.5 text-sm text-gray-500">
-                      符合规范要求
-                    </div>
-                  </div>
-                </button>
-              </div>
+                  </button>
+                </div>
+              )}
             </>
           ) : step === "body" ? (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -1305,7 +1309,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 ref={bodyContentScrollRef}
                 className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-lg border border-gray-200 bg-gray-50/30 p-4"
               >
-                <div className="markdown-body font-sans text-sm leading-relaxed text-gray-800 [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_p]:[text-indent:2em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold">
+                <div className="markdown-body font-sans text-sm leading-relaxed text-gray-800 [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold">
                   {(() => {
                     const rawText =
                       isBodyGenerating && bodySections.length
@@ -1584,7 +1588,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                   suppressContentEditableWarning
                   onFocus={updateToolbarState}
                   onBlur={handlePreviewEditableBlur}
-                  className="markdown-body p-4 font-sans text-sm leading-relaxed text-gray-800 outline-none [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_p]:[text-indent:2em] [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                  className="markdown-body p-4 font-sans text-sm leading-relaxed text-gray-800 outline-none [&_h1]:mb-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-bold [&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5 [&_li]:text-sm [&_strong]:font-semibold empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
                   data-placeholder="暂无内容，请先生成正文。"
                 />
               </div>
