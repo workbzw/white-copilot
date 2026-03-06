@@ -113,6 +113,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
   /** 无可选知识库时的原因说明（由 API 返回） */
   const [knowledgeUnavailableReason, setKnowledgeUnavailableReason] = useState<string | null>(null);
   const [selectedKnowledgeDatasetIds, setSelectedKnowledgeDatasetIds] = useState<string[]>([]);
+  /** 内网/外网切换（仅样式，无实际功能） */
+  const [networkMode, setNetworkMode] = useState<"internal" | "external">("internal");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [bodyContent, setBodyContent] = useState("");
@@ -819,26 +821,63 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
             </Link>
           )}
         </div>
-        <nav className="flex items-center gap-2 text-sm">
-          {STEPS.map((s, i) => (
-            <span key={s.id} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setStep(s.id)}
-                className={
-                  step === s.id
-                    ? "font-medium text-[#2563eb]"
-                    : "text-gray-500 hover:text-gray-700"
-                }
-              >
-                {s.label}
-              </button>
-              {i < STEPS.length - 1 && (
-                <span className="text-gray-300">→</span>
-              )}
-            </span>
-          ))}
-        </nav>
+        <div className="flex items-center gap-6">
+          <nav className="flex items-center gap-2 text-sm">
+            {STEPS.map((s, i) => (
+              <span key={s.id} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(s.id)}
+                  className={
+                    step === s.id
+                      ? "font-medium text-[#2563eb]"
+                      : "text-gray-500 hover:text-gray-700"
+                  }
+                >
+                  {s.label}
+                </button>
+                {i < STEPS.length - 1 && (
+                  <span className="text-gray-300">→</span>
+                )}
+              </span>
+            ))}
+          </nav>
+          {/* 内网/外网切换（仅样式，无实际功能） */}
+          <div
+            role="group"
+            aria-label="网络环境"
+            className="flex rounded-lg bg-gray-100/80 p-0.5 shadow-inner"
+          >
+            <button
+              type="button"
+              onClick={() => setNetworkMode("internal")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                networkMode === "internal"
+                  ? "bg-white text-[#2563eb] shadow-sm ring-1 ring-gray-200/60"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              内网
+            </button>
+            <button
+              type="button"
+              onClick={() => setNetworkMode("external")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                networkMode === "external"
+                  ? "bg-white text-[#2563eb] shadow-sm ring-1 ring-gray-200/60"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0h.5a2.5 2.5 0 0010.5-4.065M12 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              外网
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-6 overflow-hidden p-6">
