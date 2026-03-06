@@ -48,13 +48,14 @@ function getConfigStatus(): KnowledgeConfigStatus {
 
 /**
  * 从知识库服务拉取数据集列表，供前端「本对话使用的知识库」选择。
- * 返回 { options, configStatus }，configStatus 用于在「暂无可选知识库」时展示配置情况（不暴露 API Key 明文）。
+ * 返回 { options, configStatus, reason? }，options 为空时 reason 说明原因（不暴露 API Key 明文）。
  */
 export async function GET() {
   const apiKey = process.env.KNOWLEDGE_API_KEY?.trim();
   let baseUrl = (process.env.KNOWLEDGE_BASE_URL ?? DEFAULT_KNOWLEDGE_BASE_URL).trim().replace(/\/$/, "");
   if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
   const configStatus = getConfigStatus();
+  const fallback = fallbackOptionsList();
 
   if (apiKey) {
     try {
@@ -67,7 +68,11 @@ export async function GET() {
       });
       if (!res.ok) {
         console.warn("[knowledge-datasets] API 返回", res.status);
-        return NextResponse.json({ options: fallbackOptionsList(), configStatus });
+        const reason =
+          fallback.length > 0
+            ? null
+            : `知识库 API 返回 HTTP ${res.status}，且未配置 KNOWLEDGE_DATASETS_OPTIONS 作为备用`;
+        return NextResponse.json({ options: fallback, configStatus, reason });
       }
       const json = (await res.json()) as RemoteResponse;
       const list = json.data ?? [];
@@ -77,14 +82,23 @@ export async function GET() {
           id: (item.id as string).trim(),
           name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : (item.id as string).trim(),
         }));
-      return NextResponse.json({ options, configStatus });
+      const reason =
+        options.length === 0 ? "知识库服务返回的数据集列表为空或格式无效" : null;
+      return NextResponse.json({ options, configStatus, reason });
     } catch (e) {
-      console.warn("[knowledge-datasets] 知识库服务不可用，已回退:", (e as Error).message);
-      return NextResponse.json({ options: fallbackOptionsList(), configStatus });
+      const errMsg = (e as Error).message;
+      console.warn("[knowledge-datasets] 知识库服务不可用，已回退:", errMsg);
+      const reason =
+        fallback.length > 0 ? null : `知识库服务不可用：${errMsg}，且未配置 KNOWLEDGE_DATASETS_OPTIONS 作为备用`;
+      return NextResponse.json({ options: fallback, configStatus, reason });
     }
   }
 
-  return NextResponse.json({ options: fallbackOptionsList(), configStatus });
+  const reason =
+    fallback.length > 0
+      ? null
+      : "未配置 KNOWLEDGE_API_KEY，且未配置 KNOWLEDGE_DATASETS_OPTIONS 作为备用";
+  return NextResponse.json({ options: fallback, configStatus, reason });
 }
 
 function fallbackOptionsList(): KnowledgeDatasetOption[] {

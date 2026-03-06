@@ -107,6 +107,8 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
     baseUrl: string;
     requestInfo?: { method: string; url: string; headers: { name: string; value: string }[] };
   } | null>(null);
+  /** 无可选知识库时的原因说明（由 API 返回） */
+  const [knowledgeUnavailableReason, setKnowledgeUnavailableReason] = useState<string | null>(null);
   const [selectedKnowledgeDatasetIds, setSelectedKnowledgeDatasetIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -283,11 +285,13 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
         const options = Array.isArray(data) ? data : (data?.options ?? []);
         setKnowledgeDatasetOptions(options);
         setKnowledgeConfigStatus(Array.isArray(data) ? null : (data?.configStatus ?? null));
+        setKnowledgeUnavailableReason(options.length === 0 ? (data?.reason ?? null) : null);
         setSelectedKnowledgeDatasetIds(options.map((o: { id: string }) => o.id));
       })
       .catch(() => {
         setKnowledgeDatasetOptions([]);
         setKnowledgeConfigStatus(null);
+        setKnowledgeUnavailableReason("无法获取知识库列表（网络错误）");
       });
   }, []);
 
@@ -1021,9 +1025,12 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                     <p className="mt-1 text-xs text-gray-400">已默认全选，不可取消</p>
                   </>
                 ) : (
-                  <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                    暂无可选知识库
-                  </p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    <p className="font-medium">暂无可选知识库</p>
+                    {knowledgeUnavailableReason && (
+                      <p className="mt-1 text-xs text-gray-500">{knowledgeUnavailableReason}</p>
+                    )}
+                  </div>
                 )}
               </section>
 
