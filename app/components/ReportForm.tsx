@@ -934,7 +934,7 @@ export default function ReportForm({ userId, docId, initialData }: ReportFormPro
                 <textarea
                   value={coreContent ?? ""}
                   onChange={(e) => setCoreContent(e.target.value)}
-                  placeholder="补充政策背景、领导关注点"
+                  placeholder="为了使大模型输出更为专业精准的文稿，您可以在此填写和研究主题有关的国家政策、行业规范、文件名称等信息。"
                   rows={4}
                   className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
                 />
